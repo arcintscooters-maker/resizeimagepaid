@@ -12,7 +12,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Pre-download the rembg AI model so first request isn't slow
-RUN python -c "from rembg import remove; from PIL import Image; import io; remove(Image.new('RGB',(10,10)))" || true
+RUN python -c "from rembg import remove, new_session; from PIL import Image; s=new_session('birefnet-general'); remove(Image.new('RGB',(10,10)), session=s)" || true
 
 COPY . .
 
