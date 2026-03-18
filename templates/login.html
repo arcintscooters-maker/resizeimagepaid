@@ -37,6 +37,11 @@
 <body>
   <div class="card">
     <div class="logo">Pixel<span>Prep</span></div>
+    {% if request.args.get('expired') %}
+    <div style="background:#fdf0ee;border:1px solid #f0c4bc;color:#c84b2f;font-size:12px;padding:12px 14px;border-radius:8px;margin-bottom:16px;line-height:1.5;">
+      Your 7-day free trial has ended. Create an account to continue.
+    </div>
+    {% endif %}
     <div class="trial-badge">7-day free trial — no card required</div>
     <div class="tabs">
       <button class="tab active" onclick="switchTab('login')">Sign in</button>
