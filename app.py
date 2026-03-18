@@ -3,6 +3,7 @@ from PIL import Image
 import io
 import os
 import zipfile
+import numpy as np
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
@@ -13,65 +14,82 @@ def hex_to_rgb(hex_color):
     hex_color = hex_color.lstrip('#')
     return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
 
-def autocrop_white(img, threshold=240):
-    pixels = img.load()
-    w, h = img.size
-
-    top = 0
-    for y in range(h):
-        if any(pixels[x, y][c] < threshold for x in range(0, w, 3) for c in range(3)):
-            top = y
-            break
-
-    bottom = h
-    for y in range(h - 1, -1, -1):
-        if any(pixels[x, y][c] < threshold for x in range(0, w, 3) for c in range(3)):
-            bottom = y + 1
-            break
-
-    left = 0
-    for x in range(w):
-        if any(pixels[x, y][c] < threshold for y in range(0, h, 3) for c in range(3)):
-            left = x
-            break
-
-    right = w
-    for x in range(w - 1, -1, -1):
-        if any(pixels[x, y][c] < threshold for y in range(0, h, 3) for c in range(3)):
-            right = x + 1
-            break
-
+def autocrop_transparent(img):
+    arr = np.array(img)
+    alpha = arr[:, :, 3]
+    rows = np.any(alpha > 10, axis=1)
+    cols = np.any(alpha > 10, axis=0)
+    if not rows.any():
+        return img
+    rmin, rmax = np.where(rows)[0][[0, -1]]
+    cmin, cmax = np.where(cols)[0][[0, -1]]
     padding = 20
-    top = max(0, top - padding)
-    bottom = min(h, bottom + padding)
-    left = max(0, left - padding)
-    right = min(w, right + padding)
+    h, w = arr.shape[:2]
+    rmin = max(0, rmin - padding)
+    rmax = min(h - 1, rmax + padding)
+    cmin = max(0, cmin - padding)
+    cmax = min(w - 1, cmax + padding)
+    return img.crop((cmin, rmin, cmax + 1, rmax + 1))
 
-    return img.crop((left, top, right, bottom))
+def autocrop_white(img, threshold=240):
+    arr = np.array(img)
+    mask = np.any(arr < threshold, axis=2)
+    rows = np.any(mask, axis=1)
+    cols = np.any(mask, axis=0)
+    if not rows.any():
+        return img
+    rmin, rmax = np.where(rows)[0][[0, -1]]
+    cmin, cmax = np.where(cols)[0][[0, -1]]
+    padding = 20
+    h, w = arr.shape[:2]
+    rmin = max(0, rmin - padding)
+    rmax = min(h - 1, rmax + padding)
+    cmin = max(0, cmin - padding)
+    cmax = min(w - 1, cmax + padding)
+    return img.crop((cmin, rmin, cmax + 1, rmax + 1))
 
-def process_image(img_bytes, target_w, target_h, bg_color_hex, remove_bg):
-    img = Image.open(io.BytesIO(img_bytes)).convert("RGBA")
-    bg_rgb = hex_to_rgb(bg_color_hex)
+def fill_interior_gaps(rgba_img, bg_rgb):
+    """BFS flood-fill from edges to find true background transparent pixels.
+    Interior gaps (between boot & frame) get filled with bg colour."""
+    from collections import deque
+    arr = np.array(rgba_img).copy()
+    h, w = arr.shape[:2]
+    alpha = arr[:, :, 3]
 
-    if remove_bg:
-        try:
-            from rembg import remove
-            img = remove(img)
-        except Exception as e:
-            print(f"rembg failed: {e}")
-            img = img.convert("RGBA")
+    visited = np.zeros((h, w), dtype=bool)
+    queue = deque()
 
-        # Paste onto background colour
-        canvas_rgba = Image.new("RGBA", img.size, bg_rgb + (255,))
-        canvas_rgba.paste(img, mask=img.split()[3])
-        img = canvas_rgba.convert("RGB")
-    else:
-        img = img.convert("RGB")
-        img = autocrop_white(img)
+    # Seed from all edge pixels that are transparent
+    for y in range(h):
+        for x in [0, w - 1]:
+            if alpha[y, x] < 128 and not visited[y, x]:
+                visited[y, x] = True
+                queue.append((y, x))
+    for x in range(w):
+        for y in [0, h - 1]:
+            if alpha[y, x] < 128 and not visited[y, x]:
+                visited[y, x] = True
+                queue.append((y, x))
 
-    w, h = img.size
+    while queue:
+        cy, cx = queue.popleft()
+        for dy, dx in [(-1,0),(1,0),(0,-1),(0,1)]:
+            ny, nx = cy + dy, cx + dx
+            if 0 <= ny < h and 0 <= nx < w and not visited[ny, nx] and alpha[ny, nx] < 128:
+                visited[ny, nx] = True
+                queue.append((ny, nx))
 
-    # Fill top/bottom by default; fall back to fill sides if overflow
+    # Interior transparent pixels (not edge-reachable) → fill with bg
+    interior = (alpha < 128) & (~visited)
+    arr[interior, 0] = bg_rgb[0]
+    arr[interior, 1] = bg_rgb[1]
+    arr[interior, 2] = bg_rgb[2]
+    arr[interior, 3] = 255
+
+    return Image.fromarray(arr, 'RGBA')
+
+def fit_and_place(img_rgb, target_w, target_h, bg_rgb):
+    w, h = img_rgb.size
     scale_h = target_h / h
     new_w_by_h = int(w * scale_h)
 
@@ -81,11 +99,39 @@ def process_image(img_bytes, target_w, target_h, bg_color_hex, remove_bg):
         scale_w = target_w / w
         new_w, new_h = target_w, int(h * scale_w)
 
-    img = img.resize((new_w, new_h), Image.LANCZOS)
+    img_rgb = img_rgb.resize((new_w, new_h), Image.LANCZOS)
     canvas = Image.new("RGB", (target_w, target_h), bg_rgb)
     left = (target_w - new_w) // 2
     top = (target_h - new_h) // 2
-    canvas.paste(img, (left, top))
+    canvas.paste(img_rgb, (left, top))
+    return canvas
+
+def process_image(img_bytes, target_w, target_h, bg_color_hex, remove_bg):
+    bg_rgb = hex_to_rgb(bg_color_hex)
+    img = Image.open(io.BytesIO(img_bytes)).convert("RGBA")
+
+    if remove_bg:
+        try:
+            from rembg import remove
+            img = remove(img)
+        except Exception as e:
+            print(f"rembg failed: {e}")
+
+        # Fill interior gaps (between boot and frame etc.)
+        img = fill_interior_gaps(img, bg_rgb)
+
+        # Tight crop around subject
+        img = autocrop_transparent(img)
+
+        # Composite onto bg colour
+        bg_layer = Image.new("RGBA", img.size, bg_rgb + (255,))
+        bg_layer.paste(img, mask=img.split()[3])
+        img_rgb = bg_layer.convert("RGB")
+    else:
+        img_rgb = img.convert("RGB")
+        img_rgb = autocrop_white(img_rgb)
+
+    canvas = fit_and_place(img_rgb, target_w, target_h, bg_rgb)
 
     out = io.BytesIO()
     canvas.save(out, "JPEG", quality=QUALITY, optimize=True, progressive=True)
@@ -102,7 +148,6 @@ def process():
     if not files:
         return jsonify({"error": "No files uploaded"}), 400
 
-    # Canvas size
     try:
         target_w = int(request.form.get("canvas_w", 800))
         target_h = int(request.form.get("canvas_h", 800))
