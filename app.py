@@ -524,6 +524,78 @@ def do_contact():
         return jsonify({"error": "Failed to send message. Please email us directly at support@inlinex.com.sg"}), 500
     return jsonify({"ok": True})
 
+@app.route("/mobile-save")
+def mobile_save():
+    return """<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Save Image — PixelPrep</title>
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { background:#111; min-height:100vh; display:flex; flex-direction:column; align-items:center; font-family:-apple-system,sans-serif; }
+    .tip { background:#1a1a1a; width:100%; padding:20px; text-align:center; }
+    .tip-title { color:#f0a500; font-size:17px; font-weight:700; margin-bottom:6px; }
+    .tip-body { color:#ccc; font-size:14px; line-height:1.6; }
+    .img-wrap { flex:1; display:flex; align-items:center; justify-content:center; padding:16px; width:100%; }
+    #preview { max-width:100%; max-height:70vh; border-radius:8px; object-fit:contain; }
+    .back { color:#555; font-size:13px; padding:20px; text-align:center; text-decoration:none; }
+    .loading { color:#555; font-size:14px; padding:40px; }
+  </style>
+</head>
+<body>
+  <div class="tip">
+    <div class="tip-title">Hold down on the image below</div>
+    <div class="tip-body">Tap "Save to Photos" or "Save Image" to add it to your camera roll</div>
+  </div>
+  <div class="img-wrap">
+    <img id="preview" src="" alt="Your processed image"/>
+    <div class="loading" id="loading">Loading image...</div>
+  </div>
+  <a class="back" href="/">← Back to PixelPrep</a>
+  <script>
+    const data = sessionStorage.getItem('pixelprep_img');
+    if (data) {
+      const img = document.getElementById('preview');
+      img.src = data;
+      img.style.display = 'block';
+      document.getElementById('loading').style.display = 'none';
+      sessionStorage.removeItem('pixelprep_img');
+    } else {
+      document.getElementById('loading').textContent = 'No image found. Please go back and process an image first.';
+    }
+  </script>
+</body>
+</html>"""
+
+@app.route("/view-image")
+def view_image():
+    """Mobile image viewer — shows image full screen for long-press save to Photos"""
+    img_url = request.args.get("url", "")
+    filename = request.args.get("name", "image.jpg")
+    return f"""<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
+  <title>Save Image — PixelPrep</title>
+  <style>
+    * {{ margin:0; padding:0; box-sizing:border-box; }}
+    body {{ background:#000; min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; font-family:sans-serif; }}
+    .tip {{ color:#fff; font-size:14px; text-align:center; padding:16px; line-height:1.6; }}
+    .tip strong {{ color:#f90; display:block; font-size:16px; margin-bottom:6px; }}
+    img {{ max-width:100%; max-height:80vh; object-fit:contain; display:block; }}
+    .back {{ color:#888; font-size:13px; text-align:center; padding:16px; text-decoration:none; display:block; }}
+  </style>
+</head>
+<body>
+  <div class="tip"><strong>Hold down on the image below</strong>Tap "Save to Photos" or "Add to Photos"</div>
+  <img src="{img_url}" alt="{filename}"/>
+  <a class="back" href="/">← Back to PixelPrep</a>
+</body>
+</html>"""
+
 @app.route("/google7fd4b51598ab19d5.html")
 def google_verify():
     return "google-site-verification: google7fd4b51598ab19d5.html", 200, {"Content-Type": "text/html"}
