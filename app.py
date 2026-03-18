@@ -510,6 +510,10 @@ def do_contact():
         return jsonify({"error": "Failed to send message. Please email us directly at support@inlinex.com.sg"}), 500
     return jsonify({"ok": True})
 
+@app.route("/google7fd4b51598ab19d5.html")
+def google_verify():
+    return "google-site-verification: google7fd4b51598ab19d5.html", 200, {"Content-Type": "text/html"}
+
 @app.route("/sitemap.xml")
 def sitemap():
     return app.send_static_file("sitemap.xml"), 200, {"Content-Type": "application/xml"}
