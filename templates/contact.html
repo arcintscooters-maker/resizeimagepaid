@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Contact Support — PixelPrep</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@700;800&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root { --bg: #f5f2ee; --surface: #ffffff; --surface2: #f0ece6; --border: #e0d9cf; --text: #1a1714; --muted: #8c8278; --accent: #c84b2f; --success: #2a7a4b; }
+    body { background: var(--bg); font-family: 'DM Mono', monospace; color: var(--text); min-height: 100vh; }
+    .topbar { background: var(--text); color: #f5f2ee; padding: 14px 40px; display: flex; align-items: center; justify-content: space-between; }
+    .logo { font-family: 'Syne', sans-serif; font-size: 18px; font-weight: 800; text-decoration: none; color: #f5f2ee; }
+    .logo span { color: var(--accent); }
+    .back { font-size: 12px; color: #8c8278; text-decoration: none; }
+    .back:hover { color: #f5f2ee; }
+    .container { max-width: 560px; margin: 0 auto; padding: 56px 24px; }
+    h1 { font-family: 'Instrument Serif', serif; font-size: 36px; line-height: 1.15; margin-bottom: 8px; }
+    h1 em { font-style: italic; color: var(--accent); }
+    .subtitle { font-size: 12px; color: var(--muted); margin-bottom: 36px; line-height: 1.7; }
+    .form-group { margin-bottom: 16px; }
+    label { display: block; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+    input[type="text"], input[type="email"], textarea {
+      width: 100%; background: var(--surface); border: 1.5px solid var(--border);
+      border-radius: 8px; padding: 12px 14px; font-family: 'DM Mono', monospace;
+      font-size: 13px; color: var(--text); transition: border-color 0.15s;
+    }
+    textarea { resize: vertical; min-height: 140px; }
+    input:focus, textarea:focus { outline: none; border-color: var(--text); }
+    .btn { width: 100%; background: var(--text); color: #f5f2ee; border: none; border-radius: 8px; padding: 14px; font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; cursor: pointer; transition: opacity 0.15s; margin-top: 4px; }
+    .btn:hover:not(:disabled) { opacity: 0.85; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .msg { margin-top: 16px; font-size: 12px; padding: 12px 14px; border-radius: 8px; display: none; line-height: 1.6; }
+    .msg.error { display: block; background: #fdf0ee; border: 1px solid #f0c4bc; color: var(--accent); }
+    .msg.success { display: block; background: #edf7f1; border: 1px solid #b8dfc9; color: var(--success); }
+    .info-box { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px; margin-bottom: 32px; }
+    .info-box-title { font-family: 'Syne', sans-serif; font-size: 12px; font-weight: 700; margin-bottom: 10px; }
+    .info-item { font-size: 12px; color: var(--muted); line-height: 1.7; display: flex; gap: 8px; margin-bottom: 4px; }
+    .info-item::before { content: '→'; color: var(--border); flex-shrink: 0; }
+    footer { text-align: center; padding: 32px; font-size: 11px; color: var(--muted); border-top: 1px solid var(--border); margin-top: 48px; }
+    footer a { color: var(--muted); text-decoration: none; margin: 0 8px; }
+    footer a:hover { color: var(--text); }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <a class="logo" href="/">Pixel<span>Prep</span></a>
+    <a class="back" href="/">← Back to app</a>
+  </div>
+
+  <div class="container">
+    <h1>Contact <em>Support</em></h1>
+    <p class="subtitle">We typically respond within 1–2 business days. For urgent issues, include as much detail as possible.</p>
+
+    <div class="info-box">
+      <div class="info-box-title">Common questions</div>
+      <div class="info-item">Billing & subscription — we can help with charges, cancellations, and refunds</div>
+      <div class="info-item">Image processing issues — describe what went wrong and attach an example</div>
+      <div class="info-item">Account access — if you can't log in or forgot your email</div>
+      <div class="info-item">Feature requests — we read every suggestion</div>
+    </div>
+
+    <div class="form-group">
+      <label>Your name</label>
+      <input type="text" id="name" placeholder="Adam" value="{{ user.username if user else '' }}"/>
+    </div>
+    <div class="form-group">
+      <label>Email address</label>
+      <input type="email" id="email" placeholder="you@example.com" value="{{ user.email if user else '' }}"/>
+    </div>
+    <div class="form-group">
+      <label>Message</label>
+      <textarea id="message" placeholder="Describe your issue or question..."></textarea>
+    </div>
+    <button class="btn" id="btn" onclick="doSubmit()">Send message</button>
+    <div class="msg" id="msg"></div>
+  </div>
+
+  <footer>
+    © 2026 Inlinex Private Limited · PixelPrep
+    <br style="margin-bottom:8px;"/>
+    <a href="/terms">Terms of Service</a>
+    <a href="/privacy">Privacy Policy</a>
+  </footer>
+
+  <script>
+    async function doSubmit() {
+      const btn = document.getElementById('btn');
+      const msg = document.getElementById('msg');
+      const name = document.getElementById('name').value.trim();
+      const email = document.getElementById('email').value.trim();
+      const message = document.getElementById('message').value.trim();
+      btn.disabled = true;
+      btn.textContent = 'Sending...';
+      msg.className = 'msg';
+      try {
+        const res = await fetch('/contact', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, email, message })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          msg.textContent = '✓ Message sent! We\'ll get back to you within 1–2 business days. Check your inbox for a confirmation.';
+          msg.className = 'msg success';
+          btn.textContent = 'Sent!';
+          document.getElementById('message').value = '';
+        } else {
+          msg.textContent = data.error;
+          msg.className = 'msg error';
+          btn.disabled = false;
+          btn.textContent = 'Send message';
+        }
+      } catch {
+        msg.textContent = 'Something went wrong. Please try again.';
+        msg.className = 'msg error';
+        btn.disabled = false;
+        btn.textContent = 'Send message';
+      }
+    }
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && e.ctrlKey) doSubmit();
+    });
+  </script>
+</body>
+</html>
