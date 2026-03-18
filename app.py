@@ -6,6 +6,9 @@ from functools import wraps
 
 import stripe
 import bcrypt
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from flask import (Flask, request, send_file, render_template,
                    jsonify, session, redirect, url_for, make_response)
 from PIL import Image
@@ -25,6 +28,9 @@ STRIPE_PRICE_ID = os.environ.get("STRIPE_PRICE_ID")
 STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET")
 APP_URL = os.environ.get("APP_URL", "http://localhost:5000")
 
+GMAIL_USER = os.environ.get("GMAIL_USER")
+GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD")
+
 QUALITY = 85
 SUBSAMPLING = 0
 TRIAL_DAYS = 7
@@ -41,6 +47,16 @@ def init_db():
             cur.execute("""
                 ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS trial_images_used INTEGER DEFAULT 0;
                 ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE;
+                ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT FALSE;
+                CREATE TABLE IF NOT EXISTS email_tokens (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER NOT NULL,
+                    token TEXT UNIQUE NOT NULL,
+                    token_type TEXT NOT NULL,
+                    expires_at TIMESTAMPTZ NOT NULL,
+                    used BOOLEAN DEFAULT FALSE,
+                    created_at TIMESTAMPTZ DEFAULT NOW()
+                );
                 CREATE TABLE IF NOT EXISTS anon_usage (
                     id SERIAL PRIMARY KEY,
                     ip TEXT NOT NULL,
@@ -398,7 +414,70 @@ def do_signup():
     ip_used = get_anon_usage(ip)
     if ip_used and ip_used['image_count'] > 0:
         set_user_trial_usage(user['id'], ip_used['image_count'])
+    send_verification_email(user)
     return jsonify({"ok": True, "redirect": "/"})
+
+@app.route("/auth/forgot-password", methods=["POST"])
+def forgot_password():
+    data = request.get_json()
+    email = (data.get("email") or "").strip().lower()
+    if not email:
+        return jsonify({"error": "Please enter your email"}), 400
+    user = get_user_by_email(email)
+    # Always return success to prevent email enumeration
+    if user:
+        send_password_reset_email(user)
+    return jsonify({"ok": True})
+
+@app.route("/auth/verify-email")
+def verify_email():
+    token = request.args.get("token", "")
+    row = verify_email_token(token, "verify")
+    if not row:
+        return render_template("login.html", error="Verification link has expired or already been used.")
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE users SET email_verified = TRUE WHERE id = %s", (row["user_id"],))
+        conn.commit()
+    if "user_id" not in session:
+        session["user_id"] = row["user_id"]
+        session.permanent = True
+    return redirect("/?verified=1")
+
+@app.route("/auth/reset-password")
+def reset_password_page():
+    token = request.args.get("token", "")
+    row = verify_email_token(token, "reset")
+    if not row:
+        return render_template("login.html", error="Password reset link has expired or already been used. Please request a new one.")
+    return render_template("reset_password.html", token=token)
+
+@app.route("/auth/reset-password", methods=["POST"])
+def do_reset_password():
+    data = request.get_json()
+    token = data.get("token", "")
+    password = data.get("password", "")
+    if len(password) < 8:
+        return jsonify({"error": "Password must be at least 8 characters"}), 400
+    row = verify_email_token(token, "reset")
+    if not row:
+        return jsonify({"error": "Link has expired. Please request a new password reset."}), 400
+    pw_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE users SET password_hash = %s WHERE id = %s", (pw_hash, row["user_id"]))
+        conn.commit()
+    session["user_id"] = row["user_id"]
+    session.permanent = True
+    return jsonify({"ok": True, "redirect": "/"})
+
+@app.route("/terms")
+def terms():
+    return render_template("terms.html")
+
+@app.route("/privacy")
+def privacy():
+    return render_template("privacy.html")
 
 @app.route("/subscribe")
 @login_required
@@ -447,6 +526,79 @@ def billing_portal():
         return_url=f"{APP_URL}/",
     )
     return jsonify({"url": portal.url})
+
+# ── Email ────────────────────────────────────────────────────────────────────
+
+def send_email(to, subject, html):
+    if not GMAIL_USER or not GMAIL_APP_PASSWORD:
+        print(f"Email not configured. Would send to {to}: {subject}")
+        return False
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = subject
+        msg["From"] = f"PixelPrep <{GMAIL_USER}>"
+        msg["To"] = to
+        msg.attach(MIMEText(html, "html"))
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+            server.sendmail(GMAIL_USER, to, msg.as_string())
+        return True
+    except Exception as e:
+        print(f"Email error: {e}")
+        return False
+
+def create_email_token(user_id, token_type, expiry_hours=24):
+    token = secrets.token_urlsafe(32)
+    expires = datetime.now(timezone.utc) + timedelta(hours=expiry_hours)
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE email_tokens SET used = TRUE WHERE user_id = %s AND token_type = %s AND used = FALSE",
+                (user_id, token_type)
+            )
+            cur.execute(
+                "INSERT INTO email_tokens (user_id, token, token_type, expires_at) VALUES (%s, %s, %s, %s)",
+                (user_id, token, token_type, expires)
+            )
+        conn.commit()
+    return token
+
+def verify_email_token(token, token_type):
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT * FROM email_tokens WHERE token = %s AND token_type = %s AND used = FALSE AND expires_at > NOW()",
+                (token, token_type)
+            )
+            row = cur.fetchone()
+            if row:
+                cur.execute("UPDATE email_tokens SET used = TRUE WHERE id = %s", (row["id"],))
+            conn.commit()
+    return row
+
+def send_verification_email(user):
+    token = create_email_token(user["id"], "verify", expiry_hours=48)
+    link = f"{APP_URL}/auth/verify-email?token={token}"
+    html = f"""
+    <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:40px 24px;">
+      <h2 style="font-size:22px;font-weight:700;margin-bottom:8px;">Verify your email</h2>
+      <p style="color:#666;margin-bottom:24px;">Hi {user["username"]}, click below to verify your PixelPrep account. This link expires in 48 hours.</p>
+      <a href="{link}" style="display:inline-block;background:#1a1714;color:#fff;text-decoration:none;padding:14px 28px;border-radius:8px;font-weight:700;font-size:14px;">Verify email address</a>
+      <p style="color:#999;font-size:12px;margin-top:24px;">If you didn't create a PixelPrep account, you can safely ignore this email.</p>
+    </div>"""
+    return send_email(user["email"], "Verify your PixelPrep email address", html)
+
+def send_password_reset_email(user):
+    token = create_email_token(user["id"], "reset", expiry_hours=1)
+    link = f"{APP_URL}/auth/reset-password?token={token}"
+    html = f"""
+    <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:40px 24px;">
+      <h2 style="font-size:22px;font-weight:700;margin-bottom:8px;">Reset your password</h2>
+      <p style="color:#666;margin-bottom:24px;">Hi {user["username"]}, click below to reset your password. This link expires in 1 hour.</p>
+      <a href="{link}" style="display:inline-block;background:#1a1714;color:#fff;text-decoration:none;padding:14px 28px;border-radius:8px;font-weight:700;font-size:14px;">Reset password</a>
+      <p style="color:#999;font-size:12px;margin-top:24px;">If you didn't request this, you can safely ignore this email. Your password won't change.</p>
+    </div>"""
+    return send_email(user["email"], "Reset your PixelPrep password", html)
 
 def admin_required(f):
     @wraps(f)
