@@ -821,6 +821,11 @@ def process():
     is_anon = False
     cookie_used = 0
 
+    # Get files first so we can use len(files) everywhere
+    files = request.files.getlist("images")
+    if not files:
+        return jsonify({"error": "No files uploaded"}), 400
+
     if 'user_id' not in session:
         # Anonymous — check IP + cookie
         ip = get_real_ip()
@@ -831,6 +836,7 @@ def process():
         if remaining == 0:
             return jsonify({"error": "trial_expired"}), 402
         is_anon = True
+        files = files[:remaining]
     else:
         user = get_user_by_id(session['user_id'])
         if not user:
@@ -841,17 +847,8 @@ def process():
             left = user_trial_images_left(user)
             if left <= 0:
                 return jsonify({"error": "subscription_required"}), 402
-            if num_files > left:
+            if len(files) > left:
                 files = files[:left]
-                num_files = left
-
-    files = request.files.getlist("images")
-    if not files:
-        return jsonify({"error": "No files uploaded"}), 400
-
-    # For anon users, cap batch to remaining count
-    if is_anon:
-        files = files[:remaining]
 
     try:
         target_w = int(request.form.get("canvas_w", 800))
