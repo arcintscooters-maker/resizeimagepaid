@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Sign in — PixelPrep</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Mono:wght@400;500&family=Syne:wght@700;800&display=swap" rel="stylesheet"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #f5f2ee; --surface: #ffffff; --surface2: #f0ece6;
+      --border: #e0d9cf; --text: #1a1714; --muted: #8c8278;
+      --accent: #c84b2f; --error: #c84b2f; --success: #2a7a4b;
+    }
+    body { background: var(--bg); font-family: 'DM Mono', monospace; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 48px 40px; width: 100%; max-width: 420px; }
+    .logo { font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 800; margin-bottom: 32px; }
+    .logo span { color: var(--accent); }
+    h1 { font-family: 'Instrument Serif', serif; font-size: 28px; line-height: 1.2; margin-bottom: 8px; }
+    .subtitle { font-size: 12px; color: var(--muted); margin-bottom: 32px; line-height: 1.6; }
+    .trial-badge { display: inline-block; background: #edf7f1; border: 1px solid #b8dfc9; color: #2a7a4b; font-size: 11px; padding: 4px 10px; border-radius: 20px; margin-bottom: 24px; }
+    label { display: block; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+    input[type="email"] { width: 100%; background: var(--surface2); border: 1.5px solid var(--border); border-radius: 8px; padding: 12px 14px; font-family: 'DM Mono', monospace; font-size: 14px; color: var(--text); transition: border-color 0.15s; margin-bottom: 12px; }
+    input[type="email"]:focus { outline: none; border-color: var(--text); }
+    .btn { width: 100%; background: var(--text); color: #f5f2ee; border: none; border-radius: 8px; padding: 14px; font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; cursor: pointer; transition: opacity 0.15s; }
+    .btn:hover:not(:disabled) { opacity: 0.85; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .msg { margin-top: 16px; font-size: 12px; padding: 12px 14px; border-radius: 8px; display: none; }
+    .msg.success { display: block; background: #edf7f1; border: 1px solid #b8dfc9; color: var(--success); }
+    .msg.error { display: block; background: #fdf0ee; border: 1px solid #f0c4bc; color: var(--error); }
+    .divider { border: none; border-top: 1px solid var(--border); margin: 28px 0; }
+    .features { display: flex; flex-direction: column; gap: 8px; }
+    .feature { font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+    .feature::before { content: '✓'; color: var(--success); font-weight: 700; flex-shrink: 0; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">Pixel<span>Prep</span></div>
+
+    {% if error %}
+    <div class="msg error" style="display:block; margin-bottom:20px;">{{ error }}</div>
+    {% endif %}
+
+    <div class="trial-badge">7-day free trial — no card required</div>
+    <h1>Sign in to get started</h1>
+    <p class="subtitle">Enter your email and we'll send you a magic link. No password needed.</p>
+
+    <label for="email">Email address</label>
+    <input type="email" id="email" placeholder="you@example.com" autocomplete="email"/>
+    <button class="btn" id="btn" onclick="sendLink()">Send magic link</button>
+    <div class="msg" id="msg"></div>
+
+    <hr class="divider"/>
+
+    <div class="features">
+      <div class="feature">Unlimited images — SGD 1.99/month after trial</div>
+      <div class="feature">AI background removal (BiRefNet)</div>
+      <div class="feature">Smart resize with custom canvas sizes</div>
+      <div class="feature">Optimised JPEG compression</div>
+    </div>
+  </div>
+
+  <script>
+    document.getElementById('email').addEventListener('keydown', e => {
+      if (e.key === 'Enter') sendLink();
+    });
+
+    async function sendLink() {
+      const email = document.getElementById('email').value.trim();
+      const btn = document.getElementById('btn');
+      const msg = document.getElementById('msg');
+      if (!email || !email.includes('@')) {
+        msg.textContent = 'Please enter a valid email address.';
+        msg.className = 'msg error';
+        return;
+      }
+      btn.disabled = true;
+      btn.textContent = 'Sending...';
+      msg.className = 'msg';
+      try {
+        const res = await fetch('/auth/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          msg.textContent = '✓ Magic link sent! Check your inbox (and spam folder).';
+          msg.className = 'msg success';
+          btn.textContent = 'Sent!';
+        } else {
+          throw new Error(data.error || 'Something went wrong');
+        }
+      } catch (err) {
+        msg.textContent = '✗ ' + err.message;
+        msg.className = 'msg error';
+        btn.disabled = false;
+        btn.textContent = 'Send magic link';
+      }
+    }
+  </script>
+</body>
+</html>

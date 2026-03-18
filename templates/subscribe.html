@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Subscribe — PixelPrep</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Mono:wght@400;500&family=Syne:wght@700;800&display=swap" rel="stylesheet"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #f5f2ee; --surface: #ffffff; --surface2: #f0ece6;
+      --border: #e0d9cf; --text: #1a1714; --muted: #8c8278;
+      --accent: #c84b2f; --success: #2a7a4b;
+    }
+    body { background: var(--bg); font-family: 'DM Mono', monospace; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 48px 40px; width: 100%; max-width: 440px; text-align: center; }
+    .logo { font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 800; margin-bottom: 32px; text-align: left; }
+    .logo span { color: var(--accent); }
+    .expired-badge { display: inline-block; background: #fdf0ee; border: 1px solid #f0c4bc; color: var(--accent); font-size: 11px; padding: 4px 12px; border-radius: 20px; margin-bottom: 20px; }
+    h1 { font-family: 'Instrument Serif', serif; font-size: 32px; line-height: 1.15; margin-bottom: 8px; }
+    h1 em { font-style: italic; color: var(--accent); }
+    .sub-price { font-family: 'Syne', sans-serif; font-size: 42px; font-weight: 800; margin: 24px 0 4px; }
+    .sub-price span { font-size: 16px; font-weight: 400; color: var(--muted); }
+    .sub-desc { font-size: 12px; color: var(--muted); margin-bottom: 28px; }
+    .features { text-align: left; display: flex; flex-direction: column; gap: 10px; margin-bottom: 28px; background: var(--surface2); border-radius: 10px; padding: 18px; }
+    .feature { font-size: 12px; color: var(--text); display: flex; align-items: flex-start; gap: 8px; }
+    .feature::before { content: '✓'; color: var(--success); font-weight: 700; flex-shrink: 0; margin-top: 1px; }
+    .btn { width: 100%; background: var(--text); color: #f5f2ee; border: none; border-radius: 8px; padding: 16px; font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; cursor: pointer; transition: opacity 0.15s; }
+    .btn:hover:not(:disabled) { opacity: 0.85; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .secure-note { font-size: 11px; color: var(--muted); margin-top: 12px; }
+    .logout-link { display: block; margin-top: 20px; font-size: 11px; color: var(--muted); text-decoration: none; }
+    .logout-link:hover { color: var(--text); }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">Pixel<span>Prep</span></div>
+
+    {% if user.subscription_status == 'trial' %}
+    <div class="expired-badge">Your 7-day trial has ended</div>
+    {% elif user.subscription_status == 'cancelled' %}
+    <div class="expired-badge">Your subscription has been cancelled</div>
+    {% endif %}
+
+    <h1>Keep using<br/><em>PixelPrep</em></h1>
+
+    <div class="sub-price">SGD 1.99 <span>/ month</span></div>
+    <div class="sub-desc">Unlimited images. Cancel anytime.</div>
+
+    <div class="features">
+      <div class="feature">Unlimited image processing — no caps</div>
+      <div class="feature">AI background removal (BiRefNet)</div>
+      <div class="feature">Smart resize with custom canvas &amp; fill %</div>
+      <div class="feature">24 background colour presets + custom picker</div>
+      <div class="feature">Optimised JPEG — smallest file, best quality</div>
+      <div class="feature">EXIF metadata stripped for privacy</div>
+    </div>
+
+    <button class="btn" id="btnCheckout" onclick="startCheckout()">Subscribe for SGD 1.99/month</button>
+    <div class="secure-note">🔒 Secure payment via Stripe · Cancel anytime from your account</div>
+    <a class="logout-link" href="/logout">Sign out</a>
+  </div>
+
+  <script>
+    async function startCheckout() {
+      const btn = document.getElementById('btnCheckout');
+      btn.disabled = true;
+      btn.textContent = 'Redirecting to checkout...';
+      try {
+        const res = await fetch('/subscribe/checkout', { method: 'POST' });
+        const data = await res.json();
+        if (data.url) {
+          window.location.href = data.url;
+        } else {
+          throw new Error(data.error || 'Something went wrong');
+        }
+      } catch (err) {
+        btn.disabled = false;
+        btn.textContent = 'Subscribe for SGD 1.99/month';
+        alert('Error: ' + err.message);
+      }
+    }
+  </script>
+</body>
+</html>
