@@ -471,6 +471,45 @@ def do_reset_password():
     session.permanent = True
     return jsonify({"ok": True, "redirect": "/"})
 
+@app.route("/contact")
+def contact_page():
+    user = get_user_by_id(session['user_id']) if 'user_id' in session else None
+    return render_template("contact.html", user=user)
+
+@app.route("/contact", methods=["POST"])
+def do_contact():
+    data = request.get_json()
+    name = (data.get("name") or "").strip()
+    email = (data.get("email") or "").strip()
+    message = (data.get("message") or "").strip()
+    if not name or not email or not message:
+        return jsonify({"error": "Please fill in all fields"}), 400
+    if "@" not in email:
+        return jsonify({"error": "Invalid email address"}), 400
+    if len(message) < 10:
+        return jsonify({"error": "Message is too short"}), 400
+    html = f"""
+    <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px;">
+      <h2 style="margin-bottom:16px;">New PixelPrep Support Request</h2>
+      <table style="width:100%;border-collapse:collapse;">
+        <tr><td style="padding:8px;color:#666;width:100px;">Name</td><td style="padding:8px;font-weight:700;">{name}</td></tr>
+        <tr style="background:#f5f5f5;"><td style="padding:8px;color:#666;">Email</td><td style="padding:8px;"><a href="mailto:{email}">{email}</a></td></tr>
+        <tr><td style="padding:8px;color:#666;">Message</td><td style="padding:8px;">{message}</td></tr>
+      </table>
+    </div>"""
+    ok = send_email(GMAIL_USER, f"PixelPrep Support: {name}", html)
+    # Also send confirmation to user
+    confirm_html = f"""
+    <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:40px 24px;">
+      <h2 style="font-size:22px;font-weight:700;margin-bottom:8px;">We got your message</h2>
+      <p style="color:#666;margin-bottom:16px;">Hi {name}, thanks for reaching out. We'll get back to you at {email} within 1–2 business days.</p>
+      <p style="color:#999;font-size:12px;">Your message: <em>"{message[:200]}{'...' if len(message) > 200 else ''}"</em></p>
+    </div>"""
+    send_email(email, "We received your PixelPrep support request", confirm_html)
+    if not ok:
+        return jsonify({"error": "Failed to send message. Please email us directly at support@inlinex.com.sg"}), 500
+    return jsonify({"ok": True})
+
 @app.route("/terms")
 def terms():
     return render_template("terms.html")
