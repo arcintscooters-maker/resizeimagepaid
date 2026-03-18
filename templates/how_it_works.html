@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>How It Works — PixelPrep</title>
+  {% include "seo_head.html" %}
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Mono:wght@400;500&family=Syne:wght@700;800&display=swap" rel="stylesheet"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #f5f2ee; --surface: #fff; --surface2: #f0ece6;
+      --border: #e0d9cf; --text: #1a1714; --muted: #8c8278;
+      --accent: #c84b2f; --accent2: #2f6fc8; --success: #2a7a4b;
+    }
+    body { background: var(--bg); color: var(--text); font-family: 'DM Mono', monospace; }
+
+    /* Topbar */
+    .topbar { background: var(--text); color: #f5f2ee; padding: 14px 40px; display: flex; align-items: center; justify-content: space-between; }
+    .logo { font-family: 'Syne', sans-serif; font-size: 20px; font-weight: 800; text-decoration: none; color: #f5f2ee; }
+    .logo span { color: var(--accent); }
+    .topbar-links { display: flex; gap: 20px; align-items: center; }
+    .topbar-links a { font-size: 12px; color: #8c8278; text-decoration: none; letter-spacing: 0.05em; }
+    .topbar-links a:hover { color: #f5f2ee; }
+    .topbar-cta { background: var(--accent); color: #fff !important; padding: 8px 18px; border-radius: 6px; font-family: 'Syne', sans-serif; font-weight: 700; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; }
+
+    /* Hero */
+    .hero { padding: 80px 40px 60px; max-width: 960px; margin: 0 auto; text-align: center; }
+    .hero-eyebrow { font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--accent); margin-bottom: 16px; }
+    .hero h1 { font-family: 'Instrument Serif', serif; font-size: clamp(40px, 6vw, 64px); line-height: 1.1; margin-bottom: 20px; }
+    .hero h1 em { font-style: italic; color: var(--accent); }
+    .hero p { font-size: 16px; color: var(--muted); line-height: 1.8; max-width: 600px; margin: 0 auto 40px; }
+    .hero-steps { display: flex; justify-content: center; gap: 0; max-width: 700px; margin: 0 auto; }
+    .hero-step { flex: 1; display: flex; flex-direction: column; align-items: center; position: relative; }
+    .hero-step::after { content: '→'; position: absolute; right: -12px; top: 14px; color: var(--accent); font-size: 18px; font-weight: 700; }
+    .hero-step:last-child::after { display: none; }
+    .step-num { width: 36px; height: 36px; border-radius: 50%; background: var(--text); color: #f5f2ee; display: flex; align-items: center; justify-content: center; font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 800; margin-bottom: 10px; flex-shrink: 0; }
+    .step-label { font-size: 12px; color: var(--muted); text-align: center; line-height: 1.5; }
+
+    /* Section */
+    section { padding: 60px 40px; max-width: 1100px; margin: 0 auto; }
+    .section-eyebrow { font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--accent); margin-bottom: 10px; }
+    .section-title { font-family: 'Instrument Serif', serif; font-size: clamp(28px, 4vw, 44px); line-height: 1.15; margin-bottom: 12px; }
+    .section-title em { font-style: italic; color: var(--accent); }
+    .section-sub { font-size: 14px; color: var(--muted); line-height: 1.8; max-width: 620px; margin-bottom: 48px; }
+    hr.divider { border: none; border-top: 1px solid var(--border); margin: 0; }
+
+    /* Before/After */
+    .ba-grid { display: grid; grid-template-columns: 1fr auto 1fr; gap: 24px; align-items: center; margin-bottom: 16px; }
+    .ba-box { background: var(--surface); border: 1.5px solid var(--border); border-radius: 12px; overflow: hidden; }
+    .ba-box.after { border-color: var(--success); border-width: 2px; }
+    .ba-box img { width: 100%; display: block; }
+    .ba-label { font-size: 12px; color: var(--muted); padding: 10px 14px; border-top: 1px solid var(--border); }
+    .ba-label strong { color: var(--text); }
+    .ba-arrow { font-size: 48px; color: var(--accent); font-weight: 700; }
+    .ba-label.good { color: var(--success); }
+
+    /* Background grid */
+    .bg-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+    .bg-card { border-radius: 12px; overflow: hidden; border: 1.5px solid var(--border); }
+    .bg-card-img { aspect-ratio: 1; overflow: hidden; }
+    .bg-card-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .bg-card-name { font-size: 12px; font-weight: 500; padding: 8px 12px; background: var(--surface); color: var(--text); text-align: center; border-top: 1px solid var(--border); }
+
+    /* Fill % grid */
+    .fill-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+    .fill-card { border-radius: 12px; overflow: hidden; border: 1.5px solid var(--border); }
+    .fill-card-img { background: #e8d5b7; aspect-ratio: 1; overflow: hidden; }
+    .fill-card-img img { width: 100%; height: 100%; object-fit: contain; display: block; padding: 0; }
+    .fill-pct { font-size: 12px; font-weight: 700; padding: 8px 12px; background: var(--surface); color: var(--text); text-align: center; border-top: 1px solid var(--border); }
+
+    /* Feature grid */
+    .feature-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+    .feature-card { background: var(--surface); border: 1.5px solid var(--border); border-radius: 14px; padding: 28px 24px; transition: border-color 0.15s; }
+    .feature-card:hover { border-color: var(--accent); }
+    .feature-icon { font-size: 28px; margin-bottom: 14px; }
+    .feature-title { font-family: 'Syne', sans-serif; font-size: 15px; font-weight: 700; margin-bottom: 8px; }
+    .feature-desc { font-size: 12px; color: var(--muted); line-height: 1.8; }
+    .feature-tag { display: inline-block; margin-top: 10px; background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; font-size: 10px; letter-spacing: 0.08em; padding: 3px 8px; color: var(--muted); text-transform: uppercase; }
+    .feature-tag.highlight { background: #fdf0ee; border-color: #f0c4bc; color: var(--accent); }
+
+    /* Comparison */
+    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .compare-card { border-radius: 14px; padding: 28px; border: 1.5px solid var(--border); }
+    .compare-card.us { border-color: var(--accent); border-width: 2px; background: #fdf8f5; }
+    .compare-head { font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 800; margin-bottom: 20px; letter-spacing: 0.05em; text-transform: uppercase; }
+    .compare-head.us-head { color: var(--accent); }
+    .compare-head.them-head { color: var(--muted); }
+    .compare-item { display: flex; gap: 10px; font-size: 13px; color: var(--text); margin-bottom: 12px; line-height: 1.5; align-items: flex-start; }
+    .ci-x { color: var(--accent); flex-shrink: 0; font-weight: 700; }
+    .ci-check { color: var(--success); flex-shrink: 0; font-weight: 700; }
+
+    /* CTA section */
+    .cta-section { background: var(--text); color: #f5f2ee; padding: 80px 40px; text-align: center; }
+    .cta-section h2 { font-family: 'Instrument Serif', serif; font-size: clamp(32px, 5vw, 52px); margin-bottom: 16px; }
+    .cta-section h2 em { font-style: italic; color: var(--accent); }
+    .cta-section p { font-size: 14px; color: #8c8278; margin-bottom: 36px; }
+    .cta-btn { display: inline-block; background: var(--accent); color: #fff; text-decoration: none; padding: 16px 36px; border-radius: 10px; font-family: 'Syne', sans-serif; font-weight: 800; font-size: 15px; letter-spacing: 0.05em; text-transform: uppercase; transition: opacity 0.15s; }
+    .cta-btn:hover { opacity: 0.85; }
+    .cta-note { margin-top: 16px; font-size: 12px; color: #4a4540; }
+
+    /* Footer */
+    footer { background: var(--surface); border-top: 1px solid var(--border); padding: 20px 40px; display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: var(--muted); }
+    footer a { color: var(--muted); text-decoration: none; margin-left: 16px; }
+    footer a:hover { color: var(--text); }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .ba-grid { grid-template-columns: 1fr; }
+      .ba-arrow { transform: rotate(90deg); text-align: center; }
+      .bg-grid, .fill-grid { grid-template-columns: repeat(2, 1fr); }
+      .feature-grid { grid-template-columns: 1fr; }
+      .compare-grid { grid-template-columns: 1fr; }
+      .hero-steps { flex-direction: column; align-items: flex-start; gap: 16px; }
+      .hero-step::after { display: none; }
+      section { padding: 40px 20px; }
+      .topbar { padding: 12px 20px; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="topbar">
+  <a class="logo" href="/">Pixel<span>Prep</span></a>
+  <div class="topbar-links">
+    <a href="/how-it-works">How it works</a>
+    <a href="/contact">Support</a>
+    <a href="/" class="topbar-cta">Try free</a>
+  </div>
+</div>
+
+<!-- Hero -->
+<div class="hero">
+  <div class="hero-eyebrow">How it works</div>
+  <h1>Perfect product images,<br/><em>in three steps</em></h1>
+  <p>Upload your product photos and get back perfectly sized, optimised images ready for Shopify, Lazada, Shopee, or any online store — in seconds.</p>
+  <div class="hero-steps">
+    <div class="hero-step">
+      <div class="step-num">1</div>
+      <div class="step-label">Upload<br/>your images</div>
+    </div>
+    <div class="hero-step">
+      <div class="step-num">2</div>
+      <div class="step-label">Choose your<br/>settings</div>
+    </div>
+    <div class="hero-step">
+      <div class="step-num">3</div>
+      <div class="step-label">Download<br/>& publish</div>
+    </div>
+  </div>
+</div>
+
+<hr class="divider"/>
+
+<!-- Smart Resize -->
+<section>
+  <div class="section-eyebrow">Smart resize</div>
+  <h2 class="section-title">Your product always fills<br/><em>the canvas edge-to-edge</em></h2>
+  <p class="section-sub">Most tools either crop your product or leave it floating with ugly empty borders. PixelPrep scales your image to fill the canvas as much as possible while preserving the full aspect ratio — nothing ever gets cropped.</p>
+
+  <div class="ba-grid">
+    <div class="ba-box">
+      <img src="/static/og-image.jpg" alt="Original product image" style="aspect-ratio:4/3;object-fit:cover;"/>
+      <div class="ba-label"><strong>Before</strong> — Original 1024×768, white background</div>
+    </div>
+    <div class="ba-arrow">→</div>
+    <div class="ba-box after">
+      <img src="/static/og-image.jpg" alt="Resized product image" style="aspect-ratio:1;object-fit:contain;background:#1a3a6b;"/>
+      <div class="ba-label good"><strong>After</strong> — 800×800, fills sides edge-to-edge, bg removed ✓</div>
+    </div>
+  </div>
+
+  <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:18px 24px;font-size:13px;color:var(--muted);line-height:1.8;margin-top:8px;">
+    <strong style="color:var(--text);">The rule:</strong>
+    Portrait images (taller than wide) fill top & bottom edges first.
+    Landscape images (wider than tall) fill left & right edges first.
+    Either way, your product touches at least two edges — it never floats in the middle.
+    Your chosen background colour fills the remaining space.
+  </div>
+</section>
+
+<hr class="divider"/>
+
+<!-- Background colours -->
+<section>
+  <div class="section-eyebrow">AI Background Removal</div>
+  <h2 class="section-title">Any colour background,<br/><em>instantly</em></h2>
+  <p class="section-sub">Powered by BiRefNet — one of the most accurate open-source AI background removal models available. Remove the original background and place your product on any of 24 preset colours or a custom colour of your choice.</p>
+
+  <div class="bg-grid">
+    <div class="bg-card">
+      <div class="bg-card-img" style="background:#ffffff;">
+        <img src="/static/og-image.jpg" alt="White background" style="object-fit:contain;width:100%;height:100%;padding:10%;"/>
+      </div>
+      <div class="bg-card-name">White</div>
+    </div>
+    <div class="bg-card">
+      <div class="bg-card-img" style="background:#1a3a6b;">
+        <img src="/static/og-image.jpg" alt="Navy background" style="object-fit:contain;width:100%;height:100%;padding:10%;mix-blend-mode:luminosity;"/>
+      </div>
+      <div class="bg-card-name">Navy</div>
+    </div>
+    <div class="bg-card">
+      <div class="bg-card-img" style="background:#c84b2f;">
+        <img src="/static/og-image.jpg" alt="Terracotta background" style="object-fit:contain;width:100%;height:100%;padding:10%;"/>
+      </div>
+      <div class="bg-card-name">Terracotta</div>
+    </div>
+    <div class="bg-card">
+      <div class="bg-card-img" style="background:#2d4a35;">
+        <img src="/static/og-image.jpg" alt="Forest background" style="object-fit:contain;width:100%;height:100%;padding:10%;"/>
+      </div>
+      <div class="bg-card-name">Forest</div>
+    </div>
+  </div>
+</section>
+
+<hr class="divider"/>
+
+<!-- Fill % -->
+<section>
+  <div class="section-eyebrow">Image fill control</div>
+  <h2 class="section-title">Control how much your product<br/><em>fills the canvas</em></h2>
+  <p class="section-sub">Use the fill % slider to add more or less padding around your product. 100% fills edge-to-edge. 70% gives a clean, airy look with natural breathing room.</p>
+
+  <div class="fill-grid">
+    <div class="fill-card">
+      <div class="fill-card-img"><img src="/static/og-image.jpg" alt="100% fill" style="padding:0%;object-fit:cover;width:100%;height:100%;"/></div>
+      <div class="fill-pct">100%</div>
+    </div>
+    <div class="fill-card">
+      <div class="fill-card-img"><img src="/static/og-image.jpg" alt="85% fill" style="padding:7.5%;object-fit:contain;width:100%;height:100%;"/></div>
+      <div class="fill-pct">85%</div>
+    </div>
+    <div class="fill-card">
+      <div class="fill-card-img"><img src="/static/og-image.jpg" alt="70% fill" style="padding:15%;object-fit:contain;width:100%;height:100%;"/></div>
+      <div class="fill-pct">70%</div>
+    </div>
+    <div class="fill-card">
+      <div class="fill-card-img"><img src="/static/og-image.jpg" alt="50% fill" style="padding:25%;object-fit:contain;width:100%;height:100%;"/></div>
+      <div class="fill-pct">50%</div>
+    </div>
+  </div>
+</section>
+
+<hr class="divider"/>
+
+<!-- All features -->
+<section>
+  <div class="section-eyebrow">All features</div>
+  <h2 class="section-title">Everything you need,<br/><em>nothing you don't</em></h2>
+  <p class="section-sub">Built specifically for e-commerce product photography. Every feature solves a real problem that Shopify and marketplace sellers face every day.</p>
+
+  <div class="feature-grid">
+    <div class="feature-card">
+      <div class="feature-icon">📐</div>
+      <div class="feature-title">Smart canvas resize</div>
+      <div class="feature-desc">Fills top & bottom or sides — whichever doesn't crop your product. Supports 800×800, 1000×1000, 1200×1200, 1500×1500, or any custom size.</div>
+      <div class="feature-tag">Never crops</div>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">🤖</div>
+      <div class="feature-title">AI background removal</div>
+      <div class="feature-desc">BiRefNet model — state of the art open-source AI. Handles complex edges, interior gaps, and detailed product shots. Far better than older U2Net models.</div>
+      <div class="feature-tag highlight">BiRefNet AI</div>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">🎨</div>
+      <div class="feature-title">24 colour presets + custom</div>
+      <div class="feature-desc">Neutrals, warm tones, blues, greens, and bold colours. Plus a full colour picker and hex input for exact brand colours.</div>
+      <div class="feature-tag">Any colour</div>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">⚡</div>
+      <div class="feature-title">Optimised JPEG output</div>
+      <div class="feature-desc">Every image is saved with quality 85, 4:4:4 chroma subsampling (preserves colour sharpness), Huffman-optimised encoding, and progressive rendering for fast perceived load.</div>
+      <div class="feature-tag highlight">Smallest file size</div>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">🗑️</div>
+      <div class="feature-title">EXIF metadata stripped</div>
+      <div class="feature-desc">Camera model, GPS location, date taken, and all other hidden metadata removed. Smaller files and better privacy — your customers' browsers don't need to know what camera you used.</div>
+      <div class="feature-tag highlight">Privacy + speed</div>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">📦</div>
+      <div class="feature-title">Batch processing</div>
+      <div class="feature-desc">Upload multiple images at once. All processed with the same settings. Single images download as JPEG, batches download as a ZIP file ready to upload.</div>
+      <div class="feature-tag">Multiple images</div>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">🔒</div>
+      <div class="feature-title">Privacy first</div>
+      <div class="feature-desc">Your images are processed in memory on our server and immediately discarded after download. We never store, retain, or use your product images for any purpose.</div>
+      <div class="feature-tag">Not stored</div>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">📏</div>
+      <div class="feature-title">Fill % slider</div>
+      <div class="feature-desc">Control how much of the canvas your product occupies — from edge-to-edge at 100% to a centred product with generous padding at 50%.</div>
+      <div class="feature-tag">Padding control</div>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">🌐</div>
+      <div class="feature-title">Works on any platform</div>
+      <div class="feature-desc">Output images meet the requirements for Shopify, Lazada, Shopee, Qoo10, Carousell, Amazon, and any other marketplace that requires square product images.</div>
+      <div class="feature-tag">All marketplaces</div>
+    </div>
+  </div>
+</section>
+
+<hr class="divider"/>
+
+<!-- Why file size matters -->
+<section>
+  <div class="section-eyebrow">Why file size matters</div>
+  <h2 class="section-title">Smaller images =<br/><em>faster store = more sales</em></h2>
+  <p class="section-sub">Page speed directly affects conversion rates. A 1-second delay in page load time can reduce conversions by up to 7%. PixelPrep produces the smallest possible JPEG at the best visual quality — so your product pages load fast on every connection.</p>
+
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:8px;">
+    <div style="background:var(--surface);border:1.5px solid var(--border);border-radius:12px;padding:24px;">
+      <div style="font-family:'Syne',sans-serif;font-size:32px;font-weight:800;color:var(--accent);margin-bottom:6px;">4:4:4</div>
+      <div style="font-size:13px;font-weight:700;margin-bottom:6px;">Full chroma subsampling</div>
+      <div style="font-size:12px;color:var(--muted);line-height:1.7;">Preserves colour detail at every pixel. Most tools use 4:2:0 which halves colour resolution and makes product edges look muddy.</div>
+    </div>
+    <div style="background:var(--surface);border:1.5px solid var(--border);border-radius:12px;padding:24px;">
+      <div style="font-family:'Syne',sans-serif;font-size:32px;font-weight:800;color:var(--accent);margin-bottom:6px;">Q85</div>
+      <div style="font-size:13px;font-weight:700;margin-bottom:6px;">Optimal quality setting</div>
+      <div style="font-size:12px;color:var(--muted);line-height:1.7;">Quality 85 is the sweet spot — visually indistinguishable from Q95 but 30–40% smaller file size. Beyond Q85, you pay in bytes without visible benefit.</div>
+    </div>
+    <div style="background:var(--surface);border:1.5px solid var(--border);border-radius:12px;padding:24px;">
+      <div style="font-family:'Syne',sans-serif;font-size:32px;font-weight:800;color:var(--accent);margin-bottom:6px;">Progressive</div>
+      <div style="font-size:13px;font-weight:700;margin-bottom:6px;">Renders top-to-bottom</div>
+      <div style="font-size:12px;color:var(--muted);line-height:1.7;">Progressive JPEGs render a low-res preview immediately, then sharpen as they load. Products appear instantly on slow connections instead of loading line by line.</div>
+    </div>
+  </div>
+</section>
+
+<hr class="divider"/>
+
+<!-- Comparison -->
+<section>
+  <div class="section-eyebrow">Comparison</div>
+  <h2 class="section-title">How we compare to<br/><em>other tools</em></h2>
+  <p class="section-sub">We're not the only image tool out there — but we're the only one that combines all of this at SGD 1.99/month.</p>
+
+  <div class="compare-grid">
+    <div class="compare-card">
+      <div class="compare-head them-head">Other tools</div>
+      <div class="compare-item"><span class="ci-x">✕</span> Crop the image to fit the canvas</div>
+      <div class="compare-item"><span class="ci-x">✕</span> Letterbox with large empty borders</div>
+      <div class="compare-item"><span class="ci-x">✕</span> Charge $0.02–$0.10 per image</div>
+      <div class="compare-item"><span class="ci-x">✕</span> Keep EXIF data (larger, slower files)</div>
+      <div class="compare-item"><span class="ci-x">✕</span> Use 4:2:0 subsampling (blurry colours)</div>
+      <div class="compare-item"><span class="ci-x">✕</span> Limited background colours</div>
+      <div class="compare-item"><span class="ci-x">✕</span> No fill % control</div>
+    </div>
+    <div class="compare-card us">
+      <div class="compare-head us-head">PixelPrep</div>
+      <div class="compare-item"><span class="ci-check">✓</span> Always fills canvas edge-to-edge</div>
+      <div class="compare-item"><span class="ci-check">✓</span> Aspect ratio preserved — never distorted</div>
+      <div class="compare-item"><span class="ci-check">✓</span> SGD 1.99/month unlimited — no per-image fees</div>
+      <div class="compare-item"><span class="ci-check">✓</span> EXIF stripped — smallest possible file</div>
+      <div class="compare-item"><span class="ci-check">✓</span> 4:4:4 subsampling — crisp colour edges</div>
+      <div class="compare-item"><span class="ci-check">✓</span> 24 presets + custom colour picker</div>
+      <div class="compare-item"><span class="ci-check">✓</span> Fill % slider for precise padding control</div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<div class="cta-section">
+  <h2>Ready to prep your<br/><em>product images?</em></h2>
+  <p>20 free images — no credit card needed. Then SGD 1.99/month unlimited.</p>
+  <a href="/" class="cta-btn">Start for free</a>
+  <div class="cta-note">Cancel anytime · No contract · Processed &amp; discarded immediately</div>
+</div>
+
+<footer>
+  <span>© 2026 Inlinex Private Limited · PixelPrep</span>
+  <div>
+    <a href="/how-it-works">How it works</a>
+    <a href="/terms">Terms</a>
+    <a href="/privacy">Privacy</a>
+    <a href="/contact">Contact</a>
+  </div>
+</footer>
+
+</body>
+</html>
