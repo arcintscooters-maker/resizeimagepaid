@@ -39,6 +39,8 @@ def init_db():
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute("""
+                ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS trial_images_used INTEGER DEFAULT 0;
+                ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE;
                 CREATE TABLE IF NOT EXISTS anon_usage (
                     id SERIAL PRIMARY KEY,
                     ip TEXT NOT NULL,
@@ -56,9 +58,28 @@ def init_db():
                     subscription_status TEXT DEFAULT 'trial',
                     trial_ends_at TIMESTAMPTZ,
                     subscription_ends_at TIMESTAMPTZ,
+                    trial_images_used INTEGER DEFAULT 0,
+                    is_admin BOOLEAN DEFAULT FALSE,
                     created_at TIMESTAMPTZ DEFAULT NOW()
                 );
             """)
+        conn.commit()
+
+def increment_user_trial_usage(user_id, count=1):
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE users SET trial_images_used = trial_images_used + %s WHERE id = %s RETURNING trial_images_used",
+                (count, user_id)
+            )
+            result = cur.fetchone()
+        conn.commit()
+    return result['trial_images_used'] if result else 0
+
+def set_user_trial_usage(user_id, count):
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE users SET trial_images_used = %s WHERE id = %s", (count, user_id))
         conn.commit()
 
 def get_user_by_id(user_id):
@@ -108,13 +129,20 @@ def is_active(user):
     if not user:
         return False
     now = datetime.now(timezone.utc)
-    if user['subscription_status'] == 'active':
+    if user['subscription_status'] in ('active', 'cancelled'):
         ends = user['subscription_ends_at']
         return ends is None or ends > now
     if user['subscription_status'] == 'trial':
         ends = user['trial_ends_at']
-        return ends is not None and ends > now
+        time_ok = ends is not None and ends > now
+        images_used = user.get('trial_images_used', 0) or 0
+        images_ok = images_used < ANON_FREE_IMAGES
+        return time_ok and images_ok
     return False
+
+def user_trial_images_left(user):
+    used = user.get('trial_images_used', 0) or 0
+    return max(0, ANON_FREE_IMAGES - used)
 
 def trial_days_left(user):
     if user['subscription_status'] != 'trial':
@@ -290,10 +318,11 @@ def index():
             return redirect(url_for('login_page'))
         if not is_active(user):
             return redirect(url_for('subscribe_page'))
+        is_trial = user['subscription_status'] == 'trial'
         return render_template("index.html", user=user,
                                days_left=trial_days_left(user),
-                               images_remaining=None,
-                               is_trial=user['subscription_status'] == 'trial')
+                               images_remaining=user_trial_images_left(user) if is_trial else None,
+                               is_trial=is_trial)
 
     # Anonymous — check IP + cookie
     ip = get_real_ip()
@@ -328,6 +357,14 @@ def do_login():
         return jsonify({"error": "Incorrect username/email or password"}), 401
     session['user_id'] = user['id']
     session.permanent = True
+    ip = get_real_ip()
+    ip_used = get_anon_usage(ip)
+    if ip_used and ip_used['image_count'] > 0:
+        current = user.get('trial_images_used', 0) or 0
+        merged = max(current, ip_used['image_count'])
+        if merged > current:
+            set_user_trial_usage(user['id'], merged)
+        user = get_user_by_id(user['id'])
     return jsonify({"ok": True, "redirect": "/subscribe" if not is_active(user) else "/"})
 
 @app.route("/auth/signup", methods=["POST"])
@@ -354,6 +391,10 @@ def do_signup():
         return jsonify({"error": "Could not create account"}), 500
     session['user_id'] = user['id']
     session.permanent = True
+    ip = get_real_ip()
+    ip_used = get_anon_usage(ip)
+    if ip_used and ip_used['image_count'] > 0:
+        set_user_trial_usage(user['id'], ip_used['image_count'])
     return jsonify({"ok": True, "redirect": "/"})
 
 @app.route("/subscribe")
@@ -404,6 +445,39 @@ def billing_portal():
     )
     return jsonify({"url": portal.url})
 
+def admin_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if 'user_id' not in session:
+            return redirect(url_for('login_page'))
+        user = get_user_by_id(session['user_id'])
+        if not user or not user.get('is_admin'):
+            return redirect(url_for('index'))
+        return f(*args, **kwargs)
+    return decorated
+
+@app.route("/admin")
+@admin_required
+def admin_page():
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, username, email, subscription_status, trial_images_used, "
+                "trial_ends_at, subscription_ends_at, is_admin, created_at "
+                "FROM users ORDER BY created_at DESC"
+            )
+            users = cur.fetchall()
+            cur.execute("SELECT COUNT(*) as c FROM users")
+            total = cur.fetchone()['c']
+            cur.execute("SELECT COUNT(*) as c FROM users WHERE subscription_status = 'active'")
+            active = cur.fetchone()['c']
+            cur.execute("SELECT COUNT(*) as c FROM users WHERE subscription_status = 'trial'")
+            trial = cur.fetchone()['c']
+            cur.execute("SELECT COUNT(*) as c FROM users WHERE subscription_status = 'cancelled'")
+            cancelled = cur.fetchone()['c']
+    return render_template("admin.html", users=users, total=total,
+                           active=active, trial=trial, cancelled=cancelled)
+
 @app.route("/webhook/stripe", methods=["POST"])
 def stripe_webhook():
     payload = request.get_data()
@@ -419,7 +493,8 @@ def stripe_webhook():
         update_user_subscription(sub['customer'], status, ends_at)
     elif event['type'] == 'customer.subscription.deleted':
         sub = event['data']['object']
-        update_user_subscription(sub['customer'], 'cancelled', None)
+        ends_at = datetime.fromtimestamp(sub['current_period_end'], tz=timezone.utc)
+        update_user_subscription(sub['customer'], 'cancelled', ends_at)
     return jsonify({"ok": True})
 
 @app.route("/logout")
@@ -444,8 +519,17 @@ def process():
         is_anon = True
     else:
         user = get_user_by_id(session['user_id'])
+        if not user:
+            return jsonify({"error": "login_required"}), 401
         if not is_active(user):
             return jsonify({"error": "subscription_required"}), 402
+        if user['subscription_status'] == 'trial':
+            left = user_trial_images_left(user)
+            if left <= 0:
+                return jsonify({"error": "subscription_required"}), 402
+            if num_files > left:
+                files = files[:left]
+                num_files = left
 
     files = request.files.getlist("images")
     if not files:
