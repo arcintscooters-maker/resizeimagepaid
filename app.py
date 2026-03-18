@@ -77,15 +77,18 @@ def autocrop_white(img, threshold=240):
     return img.crop((max(0, cmin-padding), max(0, rmin-padding),
                      min(w, cmax+padding+1), min(h, rmax+padding+1)))
 
-def fit_and_place(img_rgb, target_w, target_h, bg_rgb):
+def fit_and_place(img_rgb, target_w, target_h, bg_rgb, fill_pct=0.95):
+    # Apply fill % — shrink the effective canvas so product doesn't touch edges
+    eff_w = int(target_w * fill_pct)
+    eff_h = int(target_h * fill_pct)
     w, h = img_rgb.size
-    scale_h = target_h / h
+    scale_h = eff_h / h
     new_w_by_h = int(w * scale_h)
-    if new_w_by_h <= target_w:
-        new_w, new_h = new_w_by_h, target_h
+    if new_w_by_h <= eff_w:
+        new_w, new_h = new_w_by_h, eff_h
     else:
-        scale_w = target_w / w
-        new_w, new_h = target_w, int(h * scale_w)
+        scale_w = eff_w / w
+        new_w, new_h = eff_w, int(h * scale_w)
     img_rgb = img_rgb.resize((new_w, new_h), Image.LANCZOS)
     canvas = Image.new("RGB", (target_w, target_h), bg_rgb)
     canvas.paste(img_rgb, ((target_w - new_w) // 2, (target_h - new_h) // 2))
@@ -98,7 +101,7 @@ def save_optimised(img_rgb):
     out.seek(0)
     return out
 
-def process_image(img_bytes, target_w, target_h, bg_color_hex, remove_bg):
+def process_image(img_bytes, target_w, target_h, bg_color_hex, remove_bg, fill_pct=0.95):
     bg_rgb = hex_to_rgb(bg_color_hex)
     img = Image.open(io.BytesIO(img_bytes)).convert("RGBA")
 
@@ -123,7 +126,7 @@ def process_image(img_bytes, target_w, target_h, bg_color_hex, remove_bg):
         img_rgb = img.convert("RGB")
         img_rgb = autocrop_white(img_rgb)
 
-    canvas = fit_and_place(img_rgb, target_w, target_h, bg_rgb)
+    canvas = fit_and_place(img_rgb, target_w, target_h, bg_rgb, fill_pct)
     return save_optimised(canvas)
 
 @app.route("/")
@@ -146,10 +149,14 @@ def process():
 
     bg_color = request.form.get("bg_color", "#ffffff")
     remove_bg = request.form.get("remove_bg", "false").lower() == "true"
+    try:
+        fill_pct = max(10, min(100, int(request.form.get("fill_pct", 95)))) / 100.0
+    except:
+        fill_pct = 0.95
 
     if len(files) == 1:
         f = files[0]
-        result = process_image(f.read(), target_w, target_h, bg_color, remove_bg)
+        result = process_image(f.read(), target_w, target_h, bg_color, remove_bg, fill_pct)
         name = os.path.splitext(f.filename)[0] + ".jpg"
         return send_file(result, mimetype="image/jpeg",
                          as_attachment=True, download_name=name)
@@ -157,7 +164,7 @@ def process():
     zip_buf = io.BytesIO()
     with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
         for f in files:
-            result = process_image(f.read(), target_w, target_h, bg_color, remove_bg)
+            result = process_image(f.read(), target_w, target_h, bg_color, remove_bg, fill_pct)
             name = os.path.splitext(f.filename)[0] + ".jpg"
             zf.writestr(name, result.read())
     zip_buf.seek(0)
