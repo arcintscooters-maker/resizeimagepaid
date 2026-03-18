@@ -8,7 +8,10 @@ import numpy as np
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
 
-QUALITY = 82
+# Quality 85 + subsampling 0 (4:4:4) = best sharpness at smallest size
+# subsampling=0 preserves colour detail (important for product photos)
+QUALITY = 85
+SUBSAMPLING = 0  # 4:4:4 — no colour downsampling
 
 def hex_to_rgb(hex_color):
     hex_color = hex_color.lstrip('#')
@@ -49,8 +52,6 @@ def autocrop_white(img, threshold=240):
     return img.crop((cmin, rmin, cmax + 1, rmax + 1))
 
 def fill_interior_gaps(rgba_img, bg_rgb):
-    """BFS flood-fill from edges to find true background transparent pixels.
-    Interior gaps (between boot & frame) get filled with bg colour."""
     from collections import deque
     arr = np.array(rgba_img).copy()
     h, w = arr.shape[:2]
@@ -59,7 +60,6 @@ def fill_interior_gaps(rgba_img, bg_rgb):
     visited = np.zeros((h, w), dtype=bool)
     queue = deque()
 
-    # Seed from all edge pixels that are transparent
     for y in range(h):
         for x in [0, w - 1]:
             if alpha[y, x] < 128 and not visited[y, x]:
@@ -79,7 +79,6 @@ def fill_interior_gaps(rgba_img, bg_rgb):
                 visited[ny, nx] = True
                 queue.append((ny, nx))
 
-    # Interior transparent pixels (not edge-reachable) → fill with bg
     interior = (alpha < 128) & (~visited)
     arr[interior, 0] = bg_rgb[0]
     arr[interior, 1] = bg_rgb[1]
@@ -106,9 +105,27 @@ def fit_and_place(img_rgb, target_w, target_h, bg_rgb):
     canvas.paste(img_rgb, (left, top))
     return canvas
 
+def save_optimised(img_rgb):
+    """Save as JPEG with max optimisation — strips all metadata."""
+    out = io.BytesIO()
+    img_rgb.save(
+        out,
+        format="JPEG",
+        quality=QUALITY,
+        subsampling=SUBSAMPLING,   # 4:4:4 — preserves colour sharpness
+        optimize=True,             # extra Huffman optimisation pass
+        progressive=True,          # progressive scan — renders top-down on slow connections
+        # No exif= param = EXIF is stripped by default in Pillow when not passed
+    )
+    out.seek(0)
+    return out
+
 def process_image(img_bytes, target_w, target_h, bg_color_hex, remove_bg):
     bg_rgb = hex_to_rgb(bg_color_hex)
-    img = Image.open(io.BytesIO(img_bytes)).convert("RGBA")
+
+    # Open without passing through any existing metadata
+    img = Image.open(io.BytesIO(img_bytes))
+    img = img.convert("RGBA")  # discard all EXIF/metadata in conversion
 
     if remove_bg:
         try:
@@ -117,13 +134,9 @@ def process_image(img_bytes, target_w, target_h, bg_color_hex, remove_bg):
         except Exception as e:
             print(f"rembg failed: {e}")
 
-        # Fill interior gaps (between boot and frame etc.)
         img = fill_interior_gaps(img, bg_rgb)
-
-        # Tight crop around subject
         img = autocrop_transparent(img)
 
-        # Composite onto bg colour
         bg_layer = Image.new("RGBA", img.size, bg_rgb + (255,))
         bg_layer.paste(img, mask=img.split()[3])
         img_rgb = bg_layer.convert("RGB")
@@ -132,11 +145,7 @@ def process_image(img_bytes, target_w, target_h, bg_color_hex, remove_bg):
         img_rgb = autocrop_white(img_rgb)
 
     canvas = fit_and_place(img_rgb, target_w, target_h, bg_rgb)
-
-    out = io.BytesIO()
-    canvas.save(out, "JPEG", quality=QUALITY, optimize=True, progressive=True)
-    out.seek(0)
-    return out
+    return save_optimised(canvas)
 
 @app.route("/")
 def index():
