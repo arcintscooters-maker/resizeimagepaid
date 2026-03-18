@@ -26,68 +26,115 @@
     .msg { margin-top: 14px; font-size: 12px; padding: 11px 14px; border-radius: 8px; display: none; line-height: 1.5; }
     .msg.error { display: block; background: #fdf0ee; border: 1px solid #f0c4bc; color: var(--accent); }
     .msg.success { display: block; background: #edf7f1; border: 1px solid #b8dfc9; color: var(--success); }
+    .forgot-link { display: block; text-align: right; font-size: 11px; color: var(--muted); text-decoration: none; margin-top: 6px; }
+    .forgot-link:hover { color: var(--text); }
     .divider { border: none; border-top: 1px solid var(--border); margin: 24px 0; }
     .features { display: flex; flex-direction: column; gap: 7px; }
     .feature { font-size: 11px; color: var(--muted); display: flex; gap: 8px; }
-    .feature::before { content: 'checkmark'; content: '✓'; color: var(--success); font-weight: 700; flex-shrink: 0; }
+    .feature::before { content: '✓'; color: var(--success); font-weight: 700; flex-shrink: 0; }
     .panel { display: none; }
     .panel.active { display: block; }
+    .footer-links { margin-top: 20px; text-align: center; font-size: 11px; color: var(--muted); }
+    .footer-links a { color: var(--muted); text-decoration: none; margin: 0 8px; }
+    .footer-links a:hover { color: var(--text); }
+
+    /* Forgot password overlay */
+    .forgot-panel { display: none; }
+    .forgot-panel.active { display: block; }
+    .back-link { font-size: 11px; color: var(--muted); cursor: pointer; margin-bottom: 20px; display: inline-block; }
+    .back-link:hover { color: var(--text); }
   </style>
 </head>
 <body>
   <div class="card">
     <div class="logo">Pixel<span>Prep</span></div>
-    {% if request.args.get('expired') %}
-    <div style="background:#fdf0ee;border:1px solid #f0c4bc;color:#c84b2f;font-size:12px;padding:12px 14px;border-radius:8px;margin-bottom:16px;line-height:1.5;">
-      Your 7-day free trial has ended. Create an account to continue.
-    </div>
+
+    {% if error %}
+    <div class="msg error" style="display:block;margin-bottom:16px;">{{ error }}</div>
     {% endif %}
-    <div class="trial-badge">7-day free trial — no card required</div>
-    <div class="tabs">
-      <button class="tab active" onclick="switchTab('login')">Sign in</button>
-      <button class="tab" onclick="switchTab('signup')">Create account</button>
+
+    <!-- Main login/signup -->
+    <div id="mainPanel">
+      <div class="trial-badge">7-day free trial — no card required</div>
+      <div class="tabs">
+        <button class="tab active" onclick="switchTab('login')">Sign in</button>
+        <button class="tab" onclick="switchTab('signup')">Create account</button>
+      </div>
+
+      <!-- Login -->
+      <div class="panel active" id="panel-login">
+        <div class="form-group">
+          <label>Username or Email</label>
+          <input type="text" id="login-identifier" placeholder="username or email" autocomplete="username"/>
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" id="login-password" placeholder="••••••••" autocomplete="current-password"/>
+          <a class="forgot-link" onclick="showForgot()">Forgot password?</a>
+        </div>
+        <button class="btn" id="btn-login" onclick="doLogin()">Sign in</button>
+        <div class="msg" id="msg-login"></div>
+      </div>
+
+      <!-- Signup -->
+      <div class="panel" id="panel-signup">
+        <div class="form-group">
+          <label>Username</label>
+          <input type="text" id="signup-username" placeholder="yourname" autocomplete="username"/>
+        </div>
+        <div class="form-group">
+          <label>Email</label>
+          <input type="email" id="signup-email" placeholder="you@example.com" autocomplete="email"/>
+        </div>
+        <div class="form-group">
+          <label>Password <span style="color:var(--muted);font-size:10px;">(min 8 characters)</span></label>
+          <input type="password" id="signup-password" placeholder="••••••••" autocomplete="new-password"/>
+        </div>
+        <button class="btn" id="btn-signup" onclick="doSignup()">Create account &amp; start trial</button>
+        <div class="msg" id="msg-signup"></div>
+      </div>
+
+      <hr class="divider"/>
+      <div class="features">
+        <div class="feature">20 free images — no credit card needed</div>
+        <div class="feature">Then SGD 1.99/month, cancel anytime</div>
+        <div class="feature">Unlimited images with AI background removal</div>
+        <div class="feature">Smart resize + custom canvas + 24 colour presets</div>
+      </div>
     </div>
-    <div class="panel active" id="panel-login">
+
+    <!-- Forgot password -->
+    <div id="forgotPanel" class="forgot-panel">
+      <span class="back-link" onclick="showMain()">← Back to sign in</span>
+      <div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800;margin-bottom:8px;">Reset password</div>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:20px;line-height:1.6;">Enter your email and we'll send you a link to reset your password.</p>
       <div class="form-group">
-        <label>Username or Email</label>
-        <input type="text" id="login-identifier" placeholder="username or email" autocomplete="username"/>
+        <label>Email address</label>
+        <input type="email" id="forgot-email" placeholder="you@example.com"/>
       </div>
-      <div class="form-group">
-        <label>Password</label>
-        <input type="password" id="login-password" placeholder="••••••••" autocomplete="current-password"/>
-      </div>
-      <button class="btn" id="btn-login" onclick="doLogin()">Sign in</button>
-      <div class="msg" id="msg-login"></div>
+      <button class="btn" id="btn-forgot" onclick="doForgot()">Send reset link</button>
+      <div class="msg" id="msg-forgot"></div>
     </div>
-    <div class="panel" id="panel-signup">
-      <div class="form-group">
-        <label>Username</label>
-        <input type="text" id="signup-username" placeholder="yourname" autocomplete="username"/>
-      </div>
-      <div class="form-group">
-        <label>Email</label>
-        <input type="email" id="signup-email" placeholder="you@example.com" autocomplete="email"/>
-      </div>
-      <div class="form-group">
-        <label>Password <span style="color:var(--muted);font-size:10px;">(min 8 characters)</span></label>
-        <input type="password" id="signup-password" placeholder="••••••••" autocomplete="new-password"/>
-      </div>
-      <button class="btn" id="btn-signup" onclick="doSignup()">Create account &amp; start trial</button>
-      <div class="msg" id="msg-signup"></div>
-    </div>
-    <hr class="divider"/>
-    <div class="features">
-      <div class="feature">7-day free trial — no credit card needed</div>
-      <div class="feature">Then SGD 1.99/month, cancel anytime</div>
-      <div class="feature">Unlimited images with AI background removal</div>
-      <div class="feature">Smart resize + custom canvas + 24 colour presets</div>
+
+    <div class="footer-links">
+      <a href="/terms">Terms of Service</a>
+      <a href="/privacy">Privacy Policy</a>
     </div>
   </div>
+
   <script>
     function switchTab(tab) {
       document.querySelectorAll('.tab').forEach((t, i) => t.classList.toggle('active', (i===0)===(tab==='login')));
       document.getElementById('panel-login').classList.toggle('active', tab==='login');
       document.getElementById('panel-signup').classList.toggle('active', tab==='signup');
+    }
+    function showForgot() {
+      document.getElementById('mainPanel').style.display = 'none';
+      document.getElementById('forgotPanel').classList.add('active');
+    }
+    function showMain() {
+      document.getElementById('mainPanel').style.display = 'block';
+      document.getElementById('forgotPanel').classList.remove('active');
     }
     function setMsg(id, text, type) {
       const el = document.getElementById(id);
@@ -95,10 +142,10 @@
       el.className = 'msg ' + type;
     }
     document.addEventListener('keydown', e => {
-      if (e.key === 'Enter') {
-        if (document.getElementById('panel-login').classList.contains('active')) doLogin();
-        else doSignup();
-      }
+      if (e.key !== 'Enter') return;
+      if (document.getElementById('forgotPanel').classList.contains('active')) doForgot();
+      else if (document.getElementById('panel-login').classList.contains('active')) doLogin();
+      else doSignup();
     });
     async function doLogin() {
       const btn = document.getElementById('btn-login');
@@ -119,6 +166,15 @@
         if (res.ok) { window.location.href = data.redirect || '/'; }
         else { setMsg('msg-signup', data.error, 'error'); btn.disabled=false; btn.textContent='Create account & start trial'; }
       } catch { setMsg('msg-signup','Something went wrong.','error'); btn.disabled=false; btn.textContent='Create account & start trial'; }
+    }
+    async function doForgot() {
+      const btn = document.getElementById('btn-forgot');
+      btn.disabled = true; btn.textContent = 'Sending...';
+      try {
+        const res = await fetch('/auth/forgot-password', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ email: document.getElementById('forgot-email').value.trim() }) });
+        setMsg('msg-forgot', '✓ If that email exists, a reset link has been sent. Check your inbox.', 'success');
+        btn.textContent = 'Sent!';
+      } catch { setMsg('msg-forgot','Something went wrong.','error'); btn.disabled=false; btn.textContent='Send reset link'; }
     }
   </script>
 </body>
