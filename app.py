@@ -33,6 +33,19 @@ GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD")
 
 QUALITY = 85
 SUBSAMPLING = 0
+
+# Load rembg session once at startup to avoid memory spikes
+REMBG_SESSION = None
+def get_rembg_session():
+    global REMBG_SESSION
+    if REMBG_SESSION is None:
+        try:
+            from rembg import new_session
+            REMBG_SESSION = new_session("birefnet-general")
+            print("rembg session loaded")
+        except Exception as e:
+            print(f"rembg session failed: {e}")
+    return REMBG_SESSION
 TRIAL_DAYS = 7
 ANON_FREE_IMAGES = 20
 
@@ -304,9 +317,10 @@ def process_image(img_bytes, target_w, target_h, bg_color_hex, remove_bg, fill_p
     img = Image.open(io.BytesIO(img_bytes)).convert("RGBA")
     if remove_bg:
         try:
-            from rembg import remove, new_session
-            session_rembg = new_session("birefnet-general")
-            img = remove(img, session=session_rembg)
+            from rembg import remove
+            session_rembg = get_rembg_session()
+            if session_rembg:
+                img = remove(img, session=session_rembg)
         except Exception as e:
             print(f"rembg failed: {e}")
         arr = np.array(img)
