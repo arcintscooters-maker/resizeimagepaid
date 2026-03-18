@@ -522,6 +522,10 @@ def sitemap():
 def robots():
     return app.send_static_file("robots.txt"), 200, {"Content-Type": "text/plain"}
 
+@app.route("/how-it-works")
+def how_it_works():
+    return render_template("how_it_works.html")
+
 @app.route("/terms")
 def terms():
     return render_template("terms.html")
