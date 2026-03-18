@@ -34,18 +34,31 @@ GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD")
 QUALITY = 85
 SUBSAMPLING = 0
 
-# Load rembg session once at startup to avoid memory spikes
-REMBG_SESSION = None
-def get_rembg_session():
-    global REMBG_SESSION
-    if REMBG_SESSION is None:
-        try:
-            from rembg import new_session
-            REMBG_SESSION = new_session("birefnet-general")
-            print("rembg session loaded")
-        except Exception as e:
-            print(f"rembg session failed: {e}")
-    return REMBG_SESSION
+# Load rembg sessions once at startup — dual model support
+REMBG_SESSION_QUALITY = None  # BiRefNet — high quality, slow (~20s), max 2/upload
+REMBG_SESSION_FAST = None     # u2net — good quality, fast (~3s), max 10/upload
+BG_LIMITS = {"birefnet": 2, "u2net": 10, "none": 20}
+
+def get_rembg_session(model="birefnet"):
+    global REMBG_SESSION_QUALITY, REMBG_SESSION_FAST
+    if model == "birefnet":
+        if REMBG_SESSION_QUALITY is None:
+            try:
+                from rembg import new_session
+                REMBG_SESSION_QUALITY = new_session("birefnet-general")
+                print("BiRefNet session loaded")
+            except Exception as e:
+                print(f"BiRefNet session failed: {e}")
+        return REMBG_SESSION_QUALITY
+    else:
+        if REMBG_SESSION_FAST is None:
+            try:
+                from rembg import new_session
+                REMBG_SESSION_FAST = new_session("u2net")
+                print("u2net session loaded")
+            except Exception as e:
+                print(f"u2net session failed: {e}")
+        return REMBG_SESSION_FAST
 TRIAL_DAYS = 7
 ANON_FREE_IMAGES = 20
 
@@ -312,13 +325,13 @@ def save_optimised(img_rgb):
     out.seek(0)
     return out
 
-def process_image(img_bytes, target_w, target_h, bg_color_hex, remove_bg, fill_pct=0.95):
+def process_image(img_bytes, target_w, target_h, bg_color_hex, remove_bg, fill_pct=0.95, bg_model='birefnet'):
     bg_rgb = hex_to_rgb(bg_color_hex)
     img = Image.open(io.BytesIO(img_bytes)).convert("RGBA")
     if remove_bg:
         try:
             from rembg import remove
-            session_rembg = get_rembg_session()
+            session_rembg = get_rembg_session(model=bg_model)
             if session_rembg:
                 img = remove(img, session=session_rembg)
         except Exception as e:
@@ -845,23 +858,31 @@ def process():
 
     bg_color = request.form.get("bg_color", "#ffffff")
     remove_bg = request.form.get("remove_bg", "false").lower() == "true"
+    bg_model = request.form.get("bg_model", "birefnet") if remove_bg else "none"
+    if bg_model not in ("birefnet", "u2net"):
+        bg_model = "birefnet"
     try:
         fill_pct = max(10, min(100, int(request.form.get("fill_pct", 95)))) / 100.0
     except:
         fill_pct = 0.95
 
+    # Enforce per-upload image limits based on AI mode
+    upload_limit = BG_LIMITS[bg_model]
+    if len(files) > upload_limit:
+        files = files[:upload_limit]
+
     image_count = len(files)
 
     if image_count == 1:
         f = files[0]
-        result = process_image(f.read(), target_w, target_h, bg_color, remove_bg, fill_pct)
+        result = process_image(f.read(), target_w, target_h, bg_color, remove_bg, fill_pct, bg_model)
         name = os.path.splitext(f.filename)[0] + ".jpg"
         response = send_file(result, mimetype="image/jpeg", as_attachment=True, download_name=name)
     else:
         zip_buf = io.BytesIO()
         with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
             for f in files:
-                result = process_image(f.read(), target_w, target_h, bg_color, remove_bg, fill_pct)
+                result = process_image(f.read(), target_w, target_h, bg_color, remove_bg, fill_pct, bg_model)
                 name = os.path.splitext(f.filename)[0] + ".jpg"
                 zf.writestr(name, result.read())
         zip_buf.seek(0)
