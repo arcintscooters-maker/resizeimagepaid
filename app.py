@@ -170,6 +170,8 @@ def update_user_subscription(stripe_customer_id, status, ends_at=None):
 def is_active(user):
     if not user:
         return False
+    if user.get('is_admin', False):
+        return True
     now = datetime.now(timezone.utc)
     if user['subscription_status'] in ('active', 'cancelled'):
         ends = user['subscription_ends_at']
@@ -637,6 +639,9 @@ def privacy():
 @login_required
 def subscribe_page():
     user = get_user_by_id(session['user_id'])
+    # Active subscribers and admins should never see this page
+    if user and is_active(user) and user.get('subscription_status') in ('active',):
+        return redirect(url_for('index'))
     return render_template("subscribe.html", user=user)
 
 @app.route("/subscribe/checkout", methods=["POST"])
@@ -866,10 +871,13 @@ def process():
     except:
         fill_pct = 0.95
 
-    # Enforce per-upload image limits based on AI mode
-    upload_limit = BG_LIMITS[bg_model]
-    if len(files) > upload_limit:
-        files = files[:upload_limit]
+    # Enforce per-upload image limits based on AI mode (admins are unlimited)
+    _user_for_limit = get_user_by_id(session['user_id']) if 'user_id' in session else None
+    _is_admin = _user_for_limit.get('is_admin', False) if _user_for_limit else False
+    if not _is_admin:
+        upload_limit = BG_LIMITS[bg_model]
+        if len(files) > upload_limit:
+            files = files[:upload_limit]
 
     image_count = len(files)
 
