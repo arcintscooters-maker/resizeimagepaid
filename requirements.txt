@@ -6,4 +6,4 @@ onnxruntime
 numpy
 stripe
 psycopg2-binary
-requests
+bcrypt
