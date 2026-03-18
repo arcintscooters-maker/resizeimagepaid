@@ -510,6 +510,14 @@ def do_contact():
         return jsonify({"error": "Failed to send message. Please email us directly at support@inlinex.com.sg"}), 500
     return jsonify({"ok": True})
 
+@app.route("/sitemap.xml")
+def sitemap():
+    return app.send_static_file("sitemap.xml"), 200, {"Content-Type": "application/xml"}
+
+@app.route("/robots.txt")
+def robots():
+    return app.send_static_file("robots.txt"), 200, {"Content-Type": "text/plain"}
+
 @app.route("/terms")
 def terms():
     return render_template("terms.html")
