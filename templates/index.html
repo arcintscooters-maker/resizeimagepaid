@@ -644,16 +644,27 @@
   <div class="topbar-logo">Pixel<span>Prep</span></div>
   <div style="display:flex;align-items:center;gap:16px;">
     {% if is_trial %}
-    <div style="font-size:11px;color:#c9a060;letter-spacing:0.05em;">{{ days_left }} day{{ 's' if days_left != 1 else '' }} left in trial</div>
-    <a href="/subscribe" style="background:#c84b2f;color:#fff;text-decoration:none;font-family:'Syne',sans-serif;font-size:11px;font-weight:700;letter-spacing:0.05em;padding:6px 14px;border-radius:6px;text-transform:uppercase;">Subscribe</a>
+      {% if user and days_left is not none %}
+      <div style="font-size:11px;color:#c9a060;letter-spacing:0.05em;">{{ days_left }} day{{ 's' if days_left != 1 else '' }} left in trial</div>
+      {% elif images_remaining is not none %}
+      <div style="font-size:11px;color:#c9a060;letter-spacing:0.05em;" data-remaining>{{ images_remaining }} free image{{ 's' if images_remaining != 1 else '' }} remaining</div>
+      {% endif %}
     {% endif %}
-    <div style="position:relative;" id="acctMenu">
-      <button onclick="toggleMenu()" style="background:none;border:1px solid #3a3734;color:#f5f2ee;border-radius:6px;padding:6px 12px;font-family:'DM Mono',monospace;font-size:11px;cursor:pointer;">Account ▾</button>
-      <div id="menuDropdown" style="display:none;position:absolute;right:0;top:calc(100% + 6px);background:#fff;border:1px solid #e0d9cf;border-radius:8px;padding:6px;min-width:160px;z-index:100;">
-        <a href="#" onclick="openPortal()" style="display:block;padding:8px 12px;font-size:12px;color:#1a1714;text-decoration:none;border-radius:4px;" onmouseover="this.style.background='#f0ece6'" onmouseout="this.style.background=''">Manage billing</a>
-        <a href="/logout" style="display:block;padding:8px 12px;font-size:12px;color:#c84b2f;text-decoration:none;border-radius:4px;" onmouseover="this.style.background='#f0ece6'" onmouseout="this.style.background=''">Sign out</a>
+    {% if user %}
+      {% if is_trial %}
+      <a href="/subscribe" style="background:#c84b2f;color:#fff;text-decoration:none;font-family:'Syne',sans-serif;font-size:11px;font-weight:700;letter-spacing:0.05em;padding:6px 14px;border-radius:6px;text-transform:uppercase;">Subscribe</a>
+      {% endif %}
+      <div style="position:relative;" id="acctMenu">
+        <button onclick="toggleMenu()" style="background:none;border:1px solid #3a3734;color:#f5f2ee;border-radius:6px;padding:6px 12px;font-family:'DM Mono',monospace;font-size:11px;cursor:pointer;">Account ▾</button>
+        <div id="menuDropdown" style="display:none;position:absolute;right:0;top:calc(100% + 6px);background:#fff;border:1px solid #e0d9cf;border-radius:8px;padding:6px;min-width:160px;z-index:100;">
+          <a href="#" onclick="openPortal()" style="display:block;padding:8px 12px;font-size:12px;color:#1a1714;text-decoration:none;border-radius:4px;" onmouseover="this.style.background='#f0ece6'" onmouseout="this.style.background=''">Manage billing</a>
+          <a href="/logout" style="display:block;padding:8px 12px;font-size:12px;color:#c84b2f;text-decoration:none;border-radius:4px;" onmouseover="this.style.background='#f0ece6'" onmouseout="this.style.background=''">Sign out</a>
+        </div>
       </div>
-    </div>
+    {% else %}
+      <a href="/login" style="background:none;border:1px solid #3a3734;color:#f5f2ee;text-decoration:none;font-family:'DM Mono',monospace;font-size:11px;padding:6px 14px;border-radius:6px;">Sign in</a>
+      <a href="/login" style="background:#c84b2f;color:#fff;text-decoration:none;font-family:'Syne',sans-serif;font-size:11px;font-weight:700;letter-spacing:0.05em;padding:6px 14px;border-radius:6px;text-transform:uppercase;">Create account</a>
+    {% endif %}
   </div>
 </div>
 
@@ -1032,7 +1043,25 @@
     const res = await _fetch(...args);
     if (args[0] === '/process') {
       if (res.status === 401) { window.location.href = '/login'; return res; }
-      if (res.status === 402) { window.location.href = '/subscribe'; return res; }
+      if (res.status === 402) {
+        const data = await res.clone().json().catch(() => ({}));
+        if (data.error === 'trial_expired') {
+          window.location.href = '/login?expired=1';
+        } else {
+          window.location.href = '/subscribe';
+        }
+        return res;
+      }
+      // Update remaining count for anon users
+      const remaining = res.headers.get('X-Images-Remaining');
+      if (remaining !== null) {
+        const el = document.querySelector('[data-remaining]');
+        if (el) {
+          const n = parseInt(remaining);
+          el.textContent = n + ' free image' + (n !== 1 ? 's' : '') + ' remaining';
+          if (n === 0) setTimeout(() => window.location.href = '/login?expired=1', 2500);
+        }
+      }
     }
     return res;
   };
