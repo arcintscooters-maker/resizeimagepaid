@@ -516,6 +516,119 @@
       color: var(--error);
     }
 
+    /* Info section */
+    .info-section {
+      margin-top: 8px;
+      border-top: 1px solid var(--border);
+      padding-top: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .info-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+    }
+
+    .info-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+    }
+
+    .info-icon {
+      font-size: 20px;
+      margin-bottom: 8px;
+    }
+
+    .info-card-title {
+      font-family: 'Syne', sans-serif;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 6px;
+      letter-spacing: 0.02em;
+    }
+
+    .info-card-body {
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.7;
+    }
+
+    .disclaimer {
+      background: #fdf8f0;
+      border: 1px solid #e8d9b8;
+      border-radius: 8px;
+      padding: 16px 18px;
+    }
+
+    .disclaimer-title {
+      font-family: 'Syne', sans-serif;
+      font-size: 11px;
+      font-weight: 700;
+      color: #a07830;
+      margin-bottom: 10px;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .disclaimer ul {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .disclaimer ul li {
+      font-size: 11px;
+      color: #8a6a3a;
+      line-height: 1.6;
+      padding-left: 14px;
+      position: relative;
+    }
+
+    .disclaimer ul li::before {
+      content: '·';
+      position: absolute;
+      left: 0;
+      color: #c9a060;
+      font-weight: 700;
+    }
+
+    /* Fill slider */
+    .fill-slider-wrap {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .fill-slider-wrap input[type="range"] {
+      flex: 1;
+      accent-color: var(--text);
+      height: 4px;
+      cursor: pointer;
+    }
+
+    .fill-pct-label {
+      font-family: 'Syne', sans-serif;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text);
+      min-width: 40px;
+      text-align: right;
+    }
+
+    .fill-hint {
+      font-size: 10px;
+      color: var(--muted);
+      margin-top: 6px;
+      line-height: 1.5;
+    }
+
     /* Responsive */
     @media (max-width: 768px) {
       .layout { grid-template-columns: 1fr; }
@@ -554,6 +667,16 @@
         <div class="times">×</div>
         <input type="number" id="customH" placeholder="Height" min="100" max="5000" value="800"/>
       </div>
+    </div>
+
+    <!-- Fill % -->
+    <div>
+      <div class="section-label">Image Fill</div>
+      <div class="fill-slider-wrap">
+        <input type="range" id="fillSlider" min="50" max="100" value="95" step="1"/>
+        <div class="fill-pct-label" id="fillLabel">95%</div>
+      </div>
+      <div class="fill-hint">How much of the canvas the product fills. Lower % adds more padding around the image.</div>
     </div>
 
     <!-- Background colour -->
@@ -637,6 +760,43 @@
     </div>
 
     <div class="status" id="status"></div>
+
+    <!-- Info & Disclaimers -->
+    <div class="info-section">
+      <div class="info-grid">
+        <div class="info-card">
+          <div class="info-icon">⚡</div>
+          <div class="info-card-title">Smart Resize</div>
+          <div class="info-card-body">Your image is scaled to fill the canvas edge-to-edge — top &amp; bottom first, sides if needed. Nothing is ever cropped. White (or your chosen colour) fills any remaining space.</div>
+        </div>
+        <div class="info-card">
+          <div class="info-icon">🤖</div>
+          <div class="info-card-title">AI Background Removal</div>
+          <div class="info-card-body">When enabled, our AI (BiRefNet) isolates your product and places it on your chosen background colour. Works best on clear product shots. Complex images with fine edges may vary in accuracy.</div>
+        </div>
+        <div class="info-card">
+          <div class="info-icon">🗜️</div>
+          <div class="info-card-title">Optimised Compression</div>
+          <div class="info-card-body">Every image is saved as a progressive JPEG with EXIF metadata stripped, 4:4:4 colour subsampling, and Huffman-optimised encoding — smallest file size at highest visual quality.</div>
+        </div>
+        <div class="info-card">
+          <div class="info-icon">🔒</div>
+          <div class="info-card-title">Privacy</div>
+          <div class="info-card-body">Your images are processed on our server and immediately discarded. We do not store, retain, or use your images for any purpose after processing is complete.</div>
+        </div>
+      </div>
+
+      <div class="disclaimer">
+        <div class="disclaimer-title">⚠️ Disclaimers</div>
+        <ul>
+          <li>AI background removal works best on product photos with a clear, solid background. Images with complex scenes, hair, fur, or transparent objects may produce imperfect results.</li>
+          <li>Interior gaps within products may not be fully removed by AI — this is a known limitation of automated background removal.</li>
+          <li>Always review your processed images before publishing. We recommend keeping your original files as a backup.</li>
+          <li>PixelPrep is a tool to assist your workflow — final image quality decisions remain your responsibility.</li>
+        </ul>
+      </div>
+    </div>
+
   </div>
 
 </div>
@@ -646,6 +806,7 @@
   let files = [];
   let canvasW = 800, canvasH = 800;
   let bgColor = '#ffffff';
+  let fillPct = 95;
   let removeBg = false;
 
   // Elements
@@ -665,6 +826,8 @@
   const removeBgToggle = document.getElementById('removeBgToggle');
   const customW = document.getElementById('customW');
   const customH = document.getElementById('customH');
+  const fillSlider = document.getElementById('fillSlider');
+  const fillLabel = document.getElementById('fillLabel');
 
   // Canvas presets
   document.querySelectorAll('.preset-btn').forEach(btn => {
@@ -722,6 +885,12 @@
   removeBgToggle.addEventListener('click', () => {
     removeBg = !removeBg;
     removeBgToggle.classList.toggle('on', removeBg);
+  });
+
+  // Fill slider
+  fillSlider.addEventListener('input', () => {
+    fillPct = parseInt(fillSlider.value);
+    fillLabel.textContent = fillPct + '%';
   });
 
   // Files
@@ -798,6 +967,7 @@
     formData.append('canvas_w', canvasW);
     formData.append('canvas_h', canvasH);
     formData.append('bg_color', bgColor);
+    formData.append('fill_pct', fillPct);
     formData.append('remove_bg', removeBg ? 'true' : 'false');
 
     try {
