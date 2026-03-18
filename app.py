@@ -1,10 +1,10 @@
 import os
 import secrets
-import string
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 
 import stripe
+import bcrypt
 from flask import (Flask, request, send_file, render_template,
                    jsonify, session, redirect, url_for)
 from PIL import Image
@@ -14,20 +14,14 @@ import numpy as np
 from collections import deque
 import psycopg2
 from psycopg2.extras import RealDictCursor
-import requests as http_requests
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", secrets.token_hex(32))
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
 
-# Stripe
 stripe.api_key = os.environ.get("STRIPE_SECRET_KEY")
 STRIPE_PRICE_ID = os.environ.get("STRIPE_PRICE_ID")
 STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET")
-
-# Resend
-RESEND_API_KEY = os.environ.get("RESEND_API_KEY")
-FROM_EMAIL = os.environ.get("FROM_EMAIL", "noreply@pixelprep.app")
 APP_URL = os.environ.get("APP_URL", "http://localhost:5000")
 
 QUALITY = 85
@@ -45,29 +39,17 @@ def init_db():
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS users (
                     id SERIAL PRIMARY KEY,
+                    username TEXT UNIQUE NOT NULL,
                     email TEXT UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL,
                     stripe_customer_id TEXT,
                     subscription_status TEXT DEFAULT 'trial',
                     trial_ends_at TIMESTAMPTZ,
                     subscription_ends_at TIMESTAMPTZ,
                     created_at TIMESTAMPTZ DEFAULT NOW()
                 );
-                CREATE TABLE IF NOT EXISTS magic_tokens (
-                    id SERIAL PRIMARY KEY,
-                    email TEXT NOT NULL,
-                    token TEXT UNIQUE NOT NULL,
-                    expires_at TIMESTAMPTZ NOT NULL,
-                    used BOOLEAN DEFAULT FALSE,
-                    created_at TIMESTAMPTZ DEFAULT NOW()
-                );
             """)
         conn.commit()
-
-def get_user_by_email(email):
-    with get_db() as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT * FROM users WHERE email = %s", (email,))
-            return cur.fetchone()
 
 def get_user_by_id(user_id):
     with get_db() as conn:
@@ -75,77 +57,53 @@ def get_user_by_id(user_id):
             cur.execute("SELECT * FROM users WHERE id = %s", (user_id,))
             return cur.fetchone()
 
-def create_user(email):
+def get_user_by_email(email):
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM users WHERE email = %s", (email.lower(),))
+            return cur.fetchone()
+
+def get_user_by_username(username):
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM users WHERE username = %s", (username.lower(),))
+            return cur.fetchone()
+
+def create_user(username, email, password):
+    pw_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
     trial_ends = datetime.now(timezone.utc) + timedelta(days=TRIAL_DAYS)
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-                INSERT INTO users (email, trial_ends_at, subscription_status)
-                VALUES (%s, %s, 'trial')
-                ON CONFLICT (email) DO NOTHING
-                RETURNING *
-            """, (email, trial_ends))
+                INSERT INTO users (username, email, password_hash, trial_ends_at, subscription_status)
+                VALUES (%s, %s, %s, %s, 'trial') RETURNING *
+            """, (username.lower(), email.lower(), pw_hash, trial_ends))
             result = cur.fetchone()
         conn.commit()
     return result
 
-def upsert_user(email):
-    user = get_user_by_email(email)
-    if not user:
-        user = create_user(email)
-        if not user:
-            user = get_user_by_email(email)
-    return user
+def check_password(user, password):
+    return bcrypt.checkpw(password.encode(), user['password_hash'].encode())
 
 def update_user_subscription(stripe_customer_id, status, ends_at=None):
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-                UPDATE users
-                SET subscription_status = %s, subscription_ends_at = %s
+                UPDATE users SET subscription_status = %s, subscription_ends_at = %s
                 WHERE stripe_customer_id = %s
             """, (status, ends_at, stripe_customer_id))
         conn.commit()
 
-def create_magic_token(email):
-    token = secrets.token_urlsafe(32)
-    expires = datetime.now(timezone.utc) + timedelta(minutes=15)
-    with get_db() as conn:
-        with conn.cursor() as cur:
-            # Invalidate old tokens for this email
-            cur.execute("UPDATE magic_tokens SET used = TRUE WHERE email = %s AND used = FALSE", (email,))
-            cur.execute("""
-                INSERT INTO magic_tokens (email, token, expires_at)
-                VALUES (%s, %s, %s)
-            """, (email, token, expires))
-        conn.commit()
-    return token
-
-def verify_magic_token(token):
-    with get_db() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                SELECT * FROM magic_tokens
-                WHERE token = %s AND used = FALSE AND expires_at > NOW()
-            """, (token,))
-            row = cur.fetchone()
-            if row:
-                cur.execute("UPDATE magic_tokens SET used = TRUE WHERE id = %s", (row['id'],))
-            conn.commit()
-    return row
-
 def is_active(user):
-    """Check if user has active access — trial or paid subscription."""
     if not user:
         return False
     now = datetime.now(timezone.utc)
-    status = user['subscription_status']
-    if status == 'active':
+    if user['subscription_status'] == 'active':
         ends = user['subscription_ends_at']
         return ends is None or ends > now
-    if status == 'trial':
-        trial_ends = user['trial_ends_at']
-        return trial_ends is not None and trial_ends > now
+    if user['subscription_status'] == 'trial':
+        ends = user['trial_ends_at']
+        return ends is not None and ends > now
     return False
 
 def trial_days_left(user):
@@ -154,8 +112,7 @@ def trial_days_left(user):
     ends = user['trial_ends_at']
     if not ends:
         return 0
-    diff = ends - datetime.now(timezone.utc)
-    return max(0, diff.days)
+    return max(0, (ends - datetime.now(timezone.utc)).days)
 
 # ── Auth helpers ──────────────────────────────────────────────────────────────
 
@@ -177,25 +134,6 @@ def subscription_required(f):
             return jsonify({"error": "subscription_required"}), 402
         return f(*args, **kwargs)
     return decorated
-
-# ── Email ─────────────────────────────────────────────────────────────────────
-
-def send_magic_link(email, token):
-    link = f"{APP_URL}/auth/verify?token={token}"
-    html = f"""
-    <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:40px 24px;">
-      <h2 style="font-size:22px;font-weight:700;margin-bottom:8px;">Sign in to PixelPrep</h2>
-      <p style="color:#666;margin-bottom:24px;">Click the button below to sign in. This link expires in 15 minutes.</p>
-      <a href="{link}" style="display:inline-block;background:#1a1714;color:#fff;text-decoration:none;padding:14px 28px;border-radius:8px;font-weight:700;font-size:14px;">Sign in to PixelPrep</a>
-      <p style="color:#999;font-size:12px;margin-top:24px;">If you didn't request this, you can safely ignore this email.</p>
-    </div>
-    """
-    resp = http_requests.post(
-        "https://api.resend.com/emails",
-        headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
-        json={"from": FROM_EMAIL, "to": email, "subject": "Your PixelPrep sign-in link", "html": html}
-    )
-    return resp.status_code == 200
 
 # ── Image processing ──────────────────────────────────────────────────────────
 
@@ -311,15 +249,16 @@ def process_image(img_bytes, target_w, target_h, bg_color_hex, remove_bg, fill_p
 
 @app.route("/")
 def index():
-    user = None
-    if 'user_id' in session:
-        user = get_user_by_id(session['user_id'])
-        if user and not is_active(user):
-            return redirect(url_for('subscribe_page'))
-    if not user:
+    if 'user_id' not in session:
         return redirect(url_for('login_page'))
-    days_left = trial_days_left(user)
-    return render_template("index.html", user=user, days_left=days_left,
+    user = get_user_by_id(session['user_id'])
+    if not user:
+        session.clear()
+        return redirect(url_for('login_page'))
+    if not is_active(user):
+        return redirect(url_for('subscribe_page'))
+    return render_template("index.html", user=user,
+                           days_left=trial_days_left(user),
                            is_trial=user['subscription_status'] == 'trial')
 
 @app.route("/login")
@@ -328,31 +267,46 @@ def login_page():
         return redirect(url_for('index'))
     return render_template("login.html")
 
-@app.route("/auth/send", methods=["POST"])
-def send_magic():
+@app.route("/auth/login", methods=["POST"])
+def do_login():
     data = request.get_json()
-    email = (data.get("email") or "").strip().lower()
-    if not email or "@" not in email:
-        return jsonify({"error": "Invalid email"}), 400
-    user = upsert_user(email)
-    token = create_magic_token(email)
-    ok = send_magic_link(email, token)
-    if not ok:
-        return jsonify({"error": "Failed to send email"}), 500
-    return jsonify({"ok": True})
-
-@app.route("/auth/verify")
-def verify_magic():
-    token = request.args.get("token", "")
-    row = verify_magic_token(token)
-    if not row:
-        return render_template("login.html", error="This link has expired or already been used. Please request a new one.")
-    user = upsert_user(row['email'])
+    identifier = (data.get("identifier") or "").strip().lower()
+    password = data.get("password") or ""
+    if not identifier or not password:
+        return jsonify({"error": "Please fill in all fields"}), 400
+    # Try email first, then username
+    user = get_user_by_email(identifier) or get_user_by_username(identifier)
+    if not user or not check_password(user, password):
+        return jsonify({"error": "Incorrect username/email or password"}), 401
     session['user_id'] = user['id']
     session.permanent = True
-    if not is_active(user):
-        return redirect(url_for('subscribe_page'))
-    return redirect(url_for('index'))
+    return jsonify({"ok": True, "redirect": "/subscribe" if not is_active(user) else "/"})
+
+@app.route("/auth/signup", methods=["POST"])
+def do_signup():
+    data = request.get_json()
+    username = (data.get("username") or "").strip()
+    email = (data.get("email") or "").strip().lower()
+    password = data.get("password") or ""
+    if not username or not email or not password:
+        return jsonify({"error": "Please fill in all fields"}), 400
+    if len(username) < 3:
+        return jsonify({"error": "Username must be at least 3 characters"}), 400
+    if "@" not in email:
+        return jsonify({"error": "Invalid email address"}), 400
+    if len(password) < 8:
+        return jsonify({"error": "Password must be at least 8 characters"}), 400
+    if get_user_by_username(username):
+        return jsonify({"error": "Username already taken"}), 409
+    if get_user_by_email(email):
+        return jsonify({"error": "An account with this email already exists"}), 409
+    try:
+        user = create_user(username, email, password)
+    except Exception as e:
+        return jsonify({"error": "Could not create account"}), 500
+    session['user_id'] = user['id']
+    session.permanent = True
+    return jsonify({"ok": True, "redirect": "/"})
 
 @app.route("/subscribe")
 @login_required
@@ -364,9 +318,8 @@ def subscribe_page():
 @login_required
 def create_checkout():
     user = get_user_by_id(session['user_id'])
-    # Create or reuse Stripe customer
     if not user['stripe_customer_id']:
-        customer = stripe.Customer.create(email=user['email'])
+        customer = stripe.Customer.create(email=user['email'], metadata={"username": user['username']})
         with get_db() as conn:
             with conn.cursor() as cur:
                 cur.execute("UPDATE users SET stripe_customer_id = %s WHERE id = %s",
@@ -375,13 +328,12 @@ def create_checkout():
         customer_id = customer.id
     else:
         customer_id = user['stripe_customer_id']
-
     checkout = stripe.checkout.Session.create(
         customer=customer_id,
         payment_method_types=["card"],
         line_items=[{"price": STRIPE_PRICE_ID, "quantity": 1}],
         mode="subscription",
-        success_url=f"{APP_URL}/subscribe/success?session_id={{CHECKOUT_SESSION_ID}}",
+        success_url=f"{APP_URL}/subscribe/success",
         cancel_url=f"{APP_URL}/subscribe",
         currency="sgd",
     )
@@ -412,17 +364,14 @@ def stripe_webhook():
         event = stripe.Webhook.construct_event(payload, sig, STRIPE_WEBHOOK_SECRET)
     except Exception as e:
         return str(e), 400
-
     if event['type'] in ('customer.subscription.created', 'customer.subscription.updated'):
         sub = event['data']['object']
         ends_at = datetime.fromtimestamp(sub['current_period_end'], tz=timezone.utc)
         status = 'active' if sub['status'] == 'active' else sub['status']
         update_user_subscription(sub['customer'], status, ends_at)
-
     elif event['type'] == 'customer.subscription.deleted':
         sub = event['data']['object']
         update_user_subscription(sub['customer'], 'cancelled', None)
-
     return jsonify({"ok": True})
 
 @app.route("/logout")
@@ -449,13 +398,11 @@ def process():
         fill_pct = max(10, min(100, int(request.form.get("fill_pct", 95)))) / 100.0
     except:
         fill_pct = 0.95
-
     if len(files) == 1:
         f = files[0]
         result = process_image(f.read(), target_w, target_h, bg_color, remove_bg, fill_pct)
         name = os.path.splitext(f.filename)[0] + ".jpg"
         return send_file(result, mimetype="image/jpeg", as_attachment=True, download_name=name)
-
     zip_buf = io.BytesIO()
     with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
         for f in files:
