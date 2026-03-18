@@ -318,11 +318,14 @@ def index():
             return redirect(url_for('login_page'))
         if not is_active(user):
             return redirect(url_for('subscribe_page'))
-        is_trial = user['subscription_status'] == 'trial'
+        is_admin = user.get('is_admin', False)
+        is_trial = user['subscription_status'] == 'trial' and not is_admin
+        is_paid = user['subscription_status'] in ('active', 'cancelled') and not is_admin
+        images_remaining = user_trial_images_left(user) if is_trial else None
         return render_template("index.html", user=user,
-                               days_left=trial_days_left(user),
-                               images_remaining=user_trial_images_left(user) if is_trial else None,
-                               is_trial=is_trial)
+                               images_remaining=images_remaining,
+                               is_trial=is_trial,
+                               is_admin=is_admin)
 
     # Anonymous — check IP + cookie
     ip = get_real_ip()
