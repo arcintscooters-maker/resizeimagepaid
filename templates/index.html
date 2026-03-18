@@ -642,7 +642,19 @@
 
 <div class="topbar">
   <div class="topbar-logo">Pixel<span>Prep</span></div>
-  <div class="topbar-tag">Product Image Tool</div>
+  <div style="display:flex;align-items:center;gap:16px;">
+    {% if is_trial %}
+    <div style="font-size:11px;color:#c9a060;letter-spacing:0.05em;">{{ days_left }} day{{ 's' if days_left != 1 else '' }} left in trial</div>
+    <a href="/subscribe" style="background:#c84b2f;color:#fff;text-decoration:none;font-family:'Syne',sans-serif;font-size:11px;font-weight:700;letter-spacing:0.05em;padding:6px 14px;border-radius:6px;text-transform:uppercase;">Subscribe</a>
+    {% endif %}
+    <div style="position:relative;" id="acctMenu">
+      <button onclick="toggleMenu()" style="background:none;border:1px solid #3a3734;color:#f5f2ee;border-radius:6px;padding:6px 12px;font-family:'DM Mono',monospace;font-size:11px;cursor:pointer;">Account ▾</button>
+      <div id="menuDropdown" style="display:none;position:absolute;right:0;top:calc(100% + 6px);background:#fff;border:1px solid #e0d9cf;border-radius:8px;padding:6px;min-width:160px;z-index:100;">
+        <a href="#" onclick="openPortal()" style="display:block;padding:8px 12px;font-size:12px;color:#1a1714;text-decoration:none;border-radius:4px;" onmouseover="this.style.background='#f0ece6'" onmouseout="this.style.background=''">Manage billing</a>
+        <a href="/logout" style="display:block;padding:8px 12px;font-size:12px;color:#c84b2f;text-decoration:none;border-radius:4px;" onmouseover="this.style.background='#f0ece6'" onmouseout="this.style.background=''">Sign out</a>
+      </div>
+    </div>
+  </div>
 </div>
 
 <div class="layout">
@@ -1001,6 +1013,29 @@
       setTimeout(() => progressWrap.classList.remove('active'), 3000);
     }
   });
+
+  function toggleMenu() {
+    const d = document.getElementById('menuDropdown');
+    d.style.display = d.style.display === 'none' ? 'block' : 'none';
+  }
+  document.addEventListener('click', e => {
+    if (!document.getElementById('acctMenu').contains(e.target))
+      document.getElementById('menuDropdown').style.display = 'none';
+  });
+  async function openPortal() {
+    const res = await fetch('/subscribe/portal', { method: 'POST' });
+    const data = await res.json();
+    if (data.url) window.location.href = data.url;
+  }
+  const _fetch = window.fetch;
+  window.fetch = async (...args) => {
+    const res = await _fetch(...args);
+    if (args[0] === '/process') {
+      if (res.status === 401) { window.location.href = '/login'; return res; }
+      if (res.status === 402) { window.location.href = '/subscribe'; return res; }
+    }
+    return res;
+  };
 </script>
 </body>
 </html>
