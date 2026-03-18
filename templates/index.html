@@ -657,6 +657,8 @@
           <a href="/admin" style="display:block;padding:8px 12px;font-size:12px;color:#e8a030;text-decoration:none;border-radius:4px;font-weight:500;" onmouseover="this.style.background='#f0ece6'" onmouseout="this.style.background=''">Admin dashboard</a>
           {% endif %}
           <a href="#" onclick="openPortal()" style="display:block;padding:8px 12px;font-size:12px;color:#1a1714;text-decoration:none;border-radius:4px;" onmouseover="this.style.background='#f0ece6'" onmouseout="this.style.background=''">Manage billing</a>
+          <a href="#" onclick="openPortal()" style="display:block;padding:8px 12px;font-size:12px;color:#8c8278;text-decoration:none;border-radius:4px;" onmouseover="this.style.background='#f0ece6'" onmouseout="this.style.background=''">Cancel subscription</a>
+          <div style="border-top:1px solid #e0d9cf;margin:4px 0;"></div>
           <a href="/logout" style="display:block;padding:8px 12px;font-size:12px;color:#c84b2f;text-decoration:none;border-radius:4px;" onmouseover="this.style.background='#f0ece6'" onmouseout="this.style.background=''">Sign out</a>
         </div>
       </div>
@@ -666,6 +668,17 @@
     {% endif %}
   </div>
 </div>
+
+  {% if request.args.get('verified') %}
+  <div style="background:#edf7f1;border-bottom:1px solid #b8dfc9;padding:10px 40px;font-size:12px;color:#2a7a4b;text-align:center;">
+    ✓ Email verified successfully. Welcome to PixelPrep!
+  </div>
+  {% endif %}
+  {% if user and not user.email_verified and not is_admin %}
+  <div style="background:#fdf8ec;border-bottom:1px solid #e8d9b8;padding:10px 40px;font-size:12px;color:#a07830;text-align:center;">
+    ⚠ Please verify your email address — check your inbox for a verification link.
+  </div>
+  {% endif %}
 
 <div class="layout">
 
@@ -822,6 +835,15 @@
   </div>
 
 </div>
+
+<footer style="background:var(--surface);border-top:1px solid var(--border);padding:16px 40px;display:flex;align-items:center;justify-content:space-between;font-size:11px;color:var(--muted);">
+  <div>© 2026 Inlinex Private Limited · PixelPrep</div>
+  <div style="display:flex;gap:20px;">
+    <a href="/terms" style="color:var(--muted);text-decoration:none;" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--muted)'">Terms of Service</a>
+    <a href="/privacy" style="color:var(--muted);text-decoration:none;" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--muted)'">Privacy Policy</a>
+    <a href="mailto:support@inlinex.com.sg" style="color:var(--muted);text-decoration:none;" onmouseover="this.style.color='var(--text)'" onmouseout="this.style.color='var(--muted)'">Contact Support</a>
+  </div>
+</footer>
 
 <script>
   // State
