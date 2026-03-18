@@ -1,0 +1,58 @@
+<!-- Favicon -->
+<link rel="icon" type="image/x-icon" href="/static/favicon.ico"/>
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg"/>
+<link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png"/>
+<link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16.png"/>
+<link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png"/>
+<link rel="manifest" href="/static/site.webmanifest"/>
+<meta name="theme-color" content="#1a1714"/>
+
+<!-- Primary SEO -->
+<meta name="description" content="{{ seo_desc | default('PixelPrep — Resize and optimise product images for Shopify and e-commerce. AI background removal, smart resize, 24 colour presets. SGD 1.99/month.') }}"/>
+<meta name="keywords" content="product image resizer, background removal, Shopify image resize, e-commerce product photos, image optimiser, AI background remover"/>
+<meta name="author" content="Inlinex Private Limited"/>
+<meta name="robots" content="index, follow"/>
+<link rel="canonical" href="https://www.pixel-prep.com{{ request.path }}"/>
+
+<!-- Open Graph -->
+<meta property="og:type" content="website"/>
+<meta property="og:site_name" content="PixelPrep"/>
+<meta property="og:title" content="{{ seo_title | default('PixelPrep — Product Image Resizer & Background Remover') }}"/>
+<meta property="og:description" content="{{ seo_desc | default('Resize and optimise product images for Shopify and e-commerce. AI background removal, smart resize, 24 colour presets. SGD 1.99/month.') }}"/>
+<meta property="og:image" content="https://www.pixel-prep.com/static/og-image.jpg"/>
+<meta property="og:url" content="https://www.pixel-prep.com{{ request.path }}"/>
+
+<!-- Twitter Card -->
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:title" content="{{ seo_title | default('PixelPrep — Product Image Resizer & Background Remover') }}"/>
+<meta name="twitter:description" content="{{ seo_desc | default('Resize and optimise product images for Shopify and e-commerce. AI background removal, smart resize, 24 colour presets. SGD 1.99/month.') }}"/>
+<meta name="twitter:image" content="https://www.pixel-prep.com/static/og-image.jpg"/>
+
+<!-- Structured Data -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "PixelPrep",
+  "applicationCategory": "UtilitiesApplication",
+  "operatingSystem": "Web",
+  "description": "Resize and optimise product images for Shopify and e-commerce. AI background removal, smart resize, 24 colour presets.",
+  "url": "https://www.pixel-prep.com",
+  "offers": {
+    "@type": "Offer",
+    "price": "1.99",
+    "priceCurrency": "SGD",
+    "priceSpecification": {
+      "@type": "UnitPriceSpecification",
+      "price": "1.99",
+      "priceCurrency": "SGD",
+      "billingDuration": "P1M"
+    }
+  },
+  "publisher": {
+    "@type": "Organization",
+    "name": "Inlinex Private Limited",
+    "url": "https://www.pixel-prep.com"
+  }
+}
+</script>
