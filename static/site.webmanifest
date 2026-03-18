@@ -1,0 +1,13 @@
+{
+  "name": "PixelPrep",
+  "short_name": "PixelPrep",
+  "description": "Product image resizer & background remover for e-commerce",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f5f2ee",
+  "theme_color": "#1a1714",
+  "icons": [
+    { "src": "/static/favicon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/static/favicon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
