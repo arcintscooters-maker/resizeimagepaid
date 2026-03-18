@@ -104,8 +104,9 @@ def process_image(img_bytes, target_w, target_h, bg_color_hex, remove_bg):
 
     if remove_bg:
         try:
-            from rembg import remove
-            img = remove(img)
+            from rembg import remove, new_session
+            session = new_session("birefnet-general")
+            img = remove(img, session=session)
         except Exception as e:
             print(f"rembg failed: {e}")
 
