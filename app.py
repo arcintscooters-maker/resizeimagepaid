@@ -16,20 +16,8 @@ def hex_to_rgb(hex_color):
     hex_color = hex_color.lstrip('#')
     return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
 
-def sample_bg_color(arr, sample_size=40):
-    """Sample the original background colour from image corners."""
-    h, w = arr.shape[:2]
-    corners = [
-        arr[0:sample_size, 0:sample_size],
-        arr[0:sample_size, w-sample_size:w],
-        arr[h-sample_size:h, 0:sample_size],
-        arr[h-sample_size:h, w-sample_size:w],
-    ]
-    all_pixels = np.vstack([c.reshape(-1, c.shape[-1]) for c in corners])
-    return tuple(all_pixels.mean(axis=0).astype(int)[:3])
-
 def fill_interior_transparent(rgba_arr, new_bg_rgb):
-    """BFS from edges — fill transparent interior gaps (between boot & frame)."""
+    """BFS from edges — fill only transparent interior gaps (e.g. between boot & frame)."""
     h, w = rgba_arr.shape[:2]
     alpha = rgba_arr[:, :, 3]
     visited = np.zeros((h, w), dtype=bool)
@@ -59,48 +47,6 @@ def fill_interior_transparent(rgba_arr, new_bg_rgb):
     result[interior, 1] = new_bg_rgb[1]
     result[interior, 2] = new_bg_rgb[2]
     result[interior, 3] = 255
-    return result
-
-def fill_interior_bg_colour(rgba_arr, orig_bg_rgb, new_bg_rgb, tolerance=40):
-    """Find opaque pixels that still match the original bg colour (interior remnants
-    like the gap between boot and skate frame) and replace them with the new bg colour.
-    Uses BFS to exclude edge-connected bg pixels (already handled by rembg)."""
-    h, w = rgba_arr.shape[:2]
-    rgb = rgba_arr[:, :, :3]
-    alpha = rgba_arr[:, :, 3]
-
-    # Pixels that are opaque but look like the original bg colour
-    diff = np.abs(rgb.astype(int) - np.array(orig_bg_rgb)).max(axis=2)
-    bg_like = (diff < tolerance) & (alpha > 128)
-
-    # BFS from edges to find outer/edge-connected bg remnants
-    visited = np.zeros((h, w), dtype=bool)
-    queue = deque()
-    for y in range(h):
-        for x in [0, w-1]:
-            if bg_like[y, x] and not visited[y, x]:
-                visited[y, x] = True
-                queue.append((y, x))
-    for x in range(w):
-        for y in [0, h-1]:
-            if bg_like[y, x] and not visited[y, x]:
-                visited[y, x] = True
-                queue.append((y, x))
-    while queue:
-        cy, cx = queue.popleft()
-        for dy, dx in [(-1,0),(1,0),(0,-1),(0,1)]:
-            ny, nx = cy+dy, cx+dx
-            if 0 <= ny < h and 0 <= nx < w and not visited[ny, nx] and bg_like[ny, nx]:
-                visited[ny, nx] = True
-                queue.append((ny, nx))
-
-    # Interior bg pixels = bg_like but NOT reachable from edges → replace
-    interior_bg = bg_like & ~visited
-    result = rgba_arr.copy()
-    result[interior_bg, 0] = new_bg_rgb[0]
-    result[interior_bg, 1] = new_bg_rgb[1]
-    result[interior_bg, 2] = new_bg_rgb[2]
-    result[interior_bg, 3] = 255
     return result
 
 def autocrop_transparent(img):
@@ -154,13 +100,7 @@ def save_optimised(img_rgb):
 
 def process_image(img_bytes, target_w, target_h, bg_color_hex, remove_bg):
     bg_rgb = hex_to_rgb(bg_color_hex)
-    img = Image.open(io.BytesIO(img_bytes))
-
-    # Sample original bg colour BEFORE any processing
-    orig_arr = np.array(img.convert("RGB"))
-    orig_bg_rgb = sample_bg_color(orig_arr)
-
-    img = img.convert("RGBA")
+    img = Image.open(io.BytesIO(img_bytes)).convert("RGBA")
 
     if remove_bg:
         try:
@@ -170,14 +110,8 @@ def process_image(img_bytes, target_w, target_h, bg_color_hex, remove_bg):
             print(f"rembg failed: {e}")
 
         arr = np.array(img)
-
-        # Pass 1: Fill transparent interior gaps (BFS from edges on alpha)
+        # Only fill transparent interior gaps (BFS on alpha — safe, no smudging)
         arr = fill_interior_transparent(arr, bg_rgb)
-
-        # Pass 2: Fill opaque interior pixels that still match the original bg colour
-        # (e.g. grey remnants between boot and frame that rembg left as opaque)
-        arr = fill_interior_bg_colour(arr, orig_bg_rgb, bg_rgb, tolerance=40)
-
         img = Image.fromarray(arr, 'RGBA')
         img = autocrop_transparent(img)
 
