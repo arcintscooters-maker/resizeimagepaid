@@ -1030,16 +1030,29 @@
       setProgress(90, 'Preparing download...');
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
       const cd = res.headers.get('Content-Disposition') || '';
       const match = cd.match(/filename="?([^"]+)"?/);
-      a.download = match ? match[1] : (files.length === 1 ? files[0].name.replace(/\.[^.]+$/, '') + '.jpg' : 'resized_images.zip');
-      a.href = url;
-      a.click();
-      URL.revokeObjectURL(url);
+      const filename = match ? match[1] : (files.length === 1 ? files[0].name.replace(/\.[^.]+$/, '') + '.jpg' : 'resized_images.zip');
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+      const isSingle = files.length === 1;
+      if (isMobile && isSingle) {
+        // On mobile, open image in new tab so user can long-press to save to Photos
+        window.open(url, '_blank');
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+        setStatus('✓ Image opened in new tab — long-press the image and tap "Save to Photos"', 'success');
+      } else {
+        const a = document.createElement('a');
+        a.download = filename;
+        a.href = url;
+        a.click();
+        URL.revokeObjectURL(url);
+        setStatus('', '');
+      }
 
       setProgress(100, 'Done!');
-      setStatus(`✓ ${files.length} image${files.length > 1 ? 's' : ''} processed and downloaded.`, 'success');
+      if (!(isMobile && isSingle)) {
+        setStatus(`✓ ${files.length} image${files.length > 1 ? 's' : ''} processed and downloaded.`, 'success');
+      }
     } catch (err) {
       setStatus('✗ ' + err.message, 'error');
       setProgress(0, '');
