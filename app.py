@@ -1,12 +1,13 @@
 import os
 import secrets
+import json
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 
 import stripe
 import bcrypt
 from flask import (Flask, request, send_file, render_template,
-                   jsonify, session, redirect, url_for)
+                   jsonify, session, redirect, url_for, make_response)
 from PIL import Image
 import io
 import zipfile
@@ -27,6 +28,7 @@ APP_URL = os.environ.get("APP_URL", "http://localhost:5000")
 QUALITY = 85
 SUBSAMPLING = 0
 TRIAL_DAYS = 7
+ANON_FREE_IMAGES = 20
 
 # ── Database ──────────────────────────────────────────────────────────────────
 
@@ -37,6 +39,14 @@ def init_db():
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute("""
+                CREATE TABLE IF NOT EXISTS anon_usage (
+                    id SERIAL PRIMARY KEY,
+                    ip TEXT NOT NULL,
+                    image_count INTEGER DEFAULT 0,
+                    first_seen TIMESTAMPTZ DEFAULT NOW(),
+                    last_seen TIMESTAMPTZ DEFAULT NOW()
+                );
+                CREATE UNIQUE INDEX IF NOT EXISTS anon_usage_ip_idx ON anon_usage(ip);
                 CREATE TABLE IF NOT EXISTS users (
                     id SERIAL PRIMARY KEY,
                     username TEXT UNIQUE NOT NULL,
@@ -114,6 +124,40 @@ def trial_days_left(user):
         return 0
     return max(0, (ends - datetime.now(timezone.utc)).days)
 
+# ── IP tracking ───────────────────────────────────────────────────────────────
+
+def get_real_ip():
+    forwarded = request.headers.get('X-Forwarded-For', '')
+    if forwarded:
+        return forwarded.split(',')[0].strip()
+    return request.remote_addr or '0.0.0.0'
+
+def get_anon_usage(ip):
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM anon_usage WHERE ip = %s", (ip,))
+            return cur.fetchone()
+
+def increment_anon_usage(ip, count):
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO anon_usage (ip, image_count, last_seen)
+                VALUES (%s, %s, NOW())
+                ON CONFLICT (ip) DO UPDATE
+                SET image_count = anon_usage.image_count + %s,
+                    last_seen = NOW()
+                RETURNING image_count
+            """, (ip, count, count))
+            result = cur.fetchone()
+        conn.commit()
+    return result['image_count'] if result else count
+
+def anon_images_remaining(ip):
+    usage = get_anon_usage(ip)
+    used = usage['image_count'] if usage else 0
+    return max(0, ANON_FREE_IMAGES - used)
+
 # ── Auth helpers ──────────────────────────────────────────────────────────────
 
 def login_required(f):
@@ -121,17 +165,6 @@ def login_required(f):
     def decorated(*args, **kwargs):
         if 'user_id' not in session:
             return redirect(url_for('login_page'))
-        return f(*args, **kwargs)
-    return decorated
-
-def subscription_required(f):
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        if 'user_id' not in session:
-            return jsonify({"error": "login_required"}), 401
-        user = get_user_by_id(session['user_id'])
-        if not is_active(user):
-            return jsonify({"error": "subscription_required"}), 402
         return f(*args, **kwargs)
     return decorated
 
@@ -249,17 +282,33 @@ def process_image(img_bytes, target_w, target_h, bg_color_hex, remove_bg, fill_p
 
 @app.route("/")
 def index():
-    if 'user_id' not in session:
-        return redirect(url_for('login_page'))
-    user = get_user_by_id(session['user_id'])
-    if not user:
-        session.clear()
-        return redirect(url_for('login_page'))
-    if not is_active(user):
-        return redirect(url_for('subscribe_page'))
-    return render_template("index.html", user=user,
-                           days_left=trial_days_left(user),
-                           is_trial=user['subscription_status'] == 'trial')
+    # Logged in user
+    if 'user_id' in session:
+        user = get_user_by_id(session['user_id'])
+        if not user:
+            session.clear()
+            return redirect(url_for('login_page'))
+        if not is_active(user):
+            return redirect(url_for('subscribe_page'))
+        return render_template("index.html", user=user,
+                               days_left=trial_days_left(user),
+                               images_remaining=None,
+                               is_trial=user['subscription_status'] == 'trial')
+
+    # Anonymous — check IP + cookie
+    ip = get_real_ip()
+    remaining_ip = anon_images_remaining(ip)
+    cookie_used = int(request.cookies.get('anon_used', 0))
+    remaining_cookie = max(0, ANON_FREE_IMAGES - cookie_used)
+    remaining = min(remaining_ip, remaining_cookie)
+
+    if remaining == 0:
+        return redirect(url_for('login_page') + '?expired=1')
+
+    return render_template("index.html", user=None,
+                           days_left=None,
+                           images_remaining=remaining,
+                           is_trial=True)
 
 @app.route("/login")
 def login_page():
@@ -274,7 +323,6 @@ def do_login():
     password = data.get("password") or ""
     if not identifier or not password:
         return jsonify({"error": "Please fill in all fields"}), 400
-    # Try email first, then username
     user = get_user_by_email(identifier) or get_user_by_username(identifier)
     if not user or not check_password(user, password):
         return jsonify({"error": "Incorrect username/email or password"}), 401
@@ -380,11 +428,33 @@ def logout():
     return redirect(url_for('login_page'))
 
 @app.route("/process", methods=["POST"])
-@subscription_required
 def process():
+    is_anon = False
+    cookie_used = 0
+
+    if 'user_id' not in session:
+        # Anonymous — check IP + cookie
+        ip = get_real_ip()
+        remaining_ip = anon_images_remaining(ip)
+        cookie_used = int(request.cookies.get('anon_used', 0))
+        remaining_cookie = max(0, ANON_FREE_IMAGES - cookie_used)
+        remaining = min(remaining_ip, remaining_cookie)
+        if remaining == 0:
+            return jsonify({"error": "trial_expired"}), 402
+        is_anon = True
+    else:
+        user = get_user_by_id(session['user_id'])
+        if not is_active(user):
+            return jsonify({"error": "subscription_required"}), 402
+
     files = request.files.getlist("images")
     if not files:
         return jsonify({"error": "No files uploaded"}), 400
+
+    # For anon users, cap batch to remaining count
+    if is_anon:
+        files = files[:remaining]
+
     try:
         target_w = int(request.form.get("canvas_w", 800))
         target_h = int(request.form.get("canvas_h", 800))
@@ -392,25 +462,41 @@ def process():
         target_h = max(100, min(5000, target_h))
     except:
         target_w, target_h = 800, 800
+
     bg_color = request.form.get("bg_color", "#ffffff")
     remove_bg = request.form.get("remove_bg", "false").lower() == "true"
     try:
         fill_pct = max(10, min(100, int(request.form.get("fill_pct", 95)))) / 100.0
     except:
         fill_pct = 0.95
-    if len(files) == 1:
+
+    image_count = len(files)
+
+    if image_count == 1:
         f = files[0]
         result = process_image(f.read(), target_w, target_h, bg_color, remove_bg, fill_pct)
         name = os.path.splitext(f.filename)[0] + ".jpg"
-        return send_file(result, mimetype="image/jpeg", as_attachment=True, download_name=name)
-    zip_buf = io.BytesIO()
-    with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        for f in files:
-            result = process_image(f.read(), target_w, target_h, bg_color, remove_bg, fill_pct)
-            name = os.path.splitext(f.filename)[0] + ".jpg"
-            zf.writestr(name, result.read())
-    zip_buf.seek(0)
-    return send_file(zip_buf, mimetype="application/zip", as_attachment=True, download_name="resized_images.zip")
+        response = send_file(result, mimetype="image/jpeg", as_attachment=True, download_name=name)
+    else:
+        zip_buf = io.BytesIO()
+        with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            for f in files:
+                result = process_image(f.read(), target_w, target_h, bg_color, remove_bg, fill_pct)
+                name = os.path.splitext(f.filename)[0] + ".jpg"
+                zf.writestr(name, result.read())
+        zip_buf.seek(0)
+        response = send_file(zip_buf, mimetype="application/zip", as_attachment=True, download_name="resized_images.zip")
+
+    # Track usage for anonymous users
+    if is_anon:
+        increment_anon_usage(ip, image_count)
+        new_used = cookie_used + image_count
+        remaining_after = max(0, ANON_FREE_IMAGES - new_used)
+        response.set_cookie('anon_used', str(new_used),
+                            max_age=60*60*24*365, httponly=True, samesite='Lax')
+        response.headers['X-Images-Remaining'] = str(remaining_after)
+
+    return response
 
 if __name__ == "__main__":
     init_db()
