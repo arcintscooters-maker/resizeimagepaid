@@ -769,6 +769,25 @@
       </div>
     </div>
 
+    <!-- AI Quality selector — shown when remove bg is ON -->
+    <div id="bgModelSection" style="display:none;">
+      <div class="section-label">AI Quality Mode</div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <div class="toggle-row" id="btnFast" onclick="setBgModel('u2net')" style="cursor:pointer;border:2px solid var(--accent);border-radius:10px;padding:10px 14px;">
+          <div class="toggle-info">
+            <div class="toggle-name" style="color:var(--accent);">⚡ Fast Mode <span style="font-size:11px;font-weight:400;color:var(--muted);">~3 seconds</span></div>
+            <div class="toggle-desc">u2net model · good for most product photos · max 10 images</div>
+          </div>
+        </div>
+        <div class="toggle-row" id="btnQuality" onclick="setBgModel('birefnet')" style="cursor:pointer;border:1.5px solid var(--border2);border-radius:10px;padding:10px 14px;">
+          <div class="toggle-info">
+            <div class="toggle-name">✨ Quality Mode <span style="font-size:11px;font-weight:400;color:var(--muted);">~20 seconds</span></div>
+            <div class="toggle-desc">BiRefNet model · best quality edges · max 2 images</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <button class="btn-process" id="btnProcess" disabled>Process &amp; Download</button>
   </div>
 
@@ -855,6 +874,7 @@
   let bgColor = '#ffffff';
   let fillPct = 95;
   let removeBg = false;
+  let bgModel = 'u2net'; // 'u2net' (fast) or 'birefnet' (quality)
 
   // Elements
   const dropzone = document.getElementById('dropzone');
@@ -932,7 +952,21 @@
   removeBgToggle.addEventListener('click', () => {
     removeBg = !removeBg;
     removeBgToggle.classList.toggle('on', removeBg);
+    document.getElementById('bgModelSection').style.display = removeBg ? 'block' : 'none';
   });
+
+  function setBgModel(model) {
+    bgModel = model;
+    const btnFast = document.getElementById('btnFast');
+    const btnQuality = document.getElementById('btnQuality');
+    btnFast.style.border = model === 'u2net' ? '2px solid var(--accent)' : '1.5px solid var(--border2)';
+    btnFast.querySelector('.toggle-name').style.color = model === 'u2net' ? 'var(--accent)' : 'var(--text)';
+    btnQuality.style.border = model === 'birefnet' ? '2px solid var(--accent)' : '1.5px solid var(--border2)';
+    btnQuality.querySelector('.toggle-name').style.color = model === 'birefnet' ? 'var(--accent)' : 'var(--text)';
+    // Update max file hint
+    const limit = model === 'birefnet' ? 2 : 10;
+    document.getElementById('bgModelSection').setAttribute('data-limit', limit);
+  }
 
   // Fill slider
   fillSlider.addEventListener('input', () => {
@@ -1016,9 +1050,10 @@
     formData.append('bg_color', bgColor);
     formData.append('fill_pct', fillPct);
     formData.append('remove_bg', removeBg ? 'true' : 'false');
+    formData.append('bg_model', bgModel);
 
     try {
-      setProgress(40, removeBg ? 'Removing backgrounds (AI)...' : 'Processing images...');
+      setProgress(40, removeBg ? (bgModel === 'birefnet' ? 'Removing backgrounds (Quality AI)...' : 'Removing backgrounds (Fast AI)...') : 'Processing images...');
       const res = await fetch('/process', { method: 'POST', body: formData });
 
       if (!res.ok) {
