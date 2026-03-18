@@ -1,9 +1,0 @@
-User-agent: *
-Allow: /
-Disallow: /admin
-Disallow: /process
-Disallow: /auth/
-Disallow: /subscribe/checkout
-Disallow: /subscribe/portal
-
-Sitemap: https://www.pixel-prep.com/sitemap.xml
