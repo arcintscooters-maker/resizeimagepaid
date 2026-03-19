@@ -3,6 +3,7 @@ import secrets
 import json
 from datetime import datetime, timedelta, timezone
 from functools import wraps
+from concurrent.futures import ThreadPoolExecutor
 
 import stripe
 import bcrypt
@@ -35,9 +36,10 @@ QUALITY = 85
 SUBSAMPLING = 0
 
 # Load rembg sessions once at startup — dual model support
-REMBG_SESSION_QUALITY = None  # BiRefNet — high quality, slow (~20s), max 2/upload
+REMBG_SESSION_QUALITY = None  # BiRefNet-lite — good quality, faster (~8-10s)
 REMBG_SESSION_FAST = None     # u2net — good quality, fast (~3s), max 10/upload
-BG_LIMITS = {"birefnet": 2, "u2net": 10, "none": 20}
+BG_LIMITS = {"birefnet": 5, "u2net": 10, "none": 20}
+REMBG_MAX_DIM = 1024  # Downscale images before rembg for speed
 
 def get_rembg_session(model="birefnet"):
     global REMBG_SESSION_QUALITY, REMBG_SESSION_FAST
@@ -45,10 +47,17 @@ def get_rembg_session(model="birefnet"):
         if REMBG_SESSION_QUALITY is None:
             try:
                 from rembg import new_session
-                REMBG_SESSION_QUALITY = new_session("birefnet-general")
-                print("BiRefNet session loaded")
+                REMBG_SESSION_QUALITY = new_session("birefnet-general-lite")
+                print("BiRefNet-lite session loaded")
             except Exception as e:
-                print(f"BiRefNet session failed: {e}")
+                print(f"BiRefNet-lite session failed: {e}")
+                # Fallback to full model
+                try:
+                    from rembg import new_session
+                    REMBG_SESSION_QUALITY = new_session("birefnet-general")
+                    print("BiRefNet full session loaded (fallback)")
+                except Exception as e2:
+                    print(f"BiRefNet fallback also failed: {e2}")
         return REMBG_SESSION_QUALITY
     else:
         if REMBG_SESSION_FAST is None:
@@ -327,6 +336,15 @@ def save_optimised(img_rgb):
     out.seek(0)
     return out
 
+def downscale_for_rembg(img, max_dim=REMBG_MAX_DIM):
+    """Downscale image before rembg to speed up inference."""
+    w, h = img.size
+    if max(w, h) <= max_dim:
+        return img, 1.0
+    scale = max_dim / max(w, h)
+    new_w, new_h = int(w * scale), int(h * scale)
+    return img.resize((new_w, new_h), Image.LANCZOS), scale
+
 def process_image(img_bytes, target_w, target_h, bg_color_hex, remove_bg, fill_pct=0.95, bg_model='birefnet'):
     bg_rgb = hex_to_rgb(bg_color_hex)
     img = Image.open(io.BytesIO(img_bytes)).convert("RGBA")
@@ -335,7 +353,16 @@ def process_image(img_bytes, target_w, target_h, bg_color_hex, remove_bg, fill_p
             from rembg import remove
             session_rembg = get_rembg_session(model=bg_model)
             if session_rembg:
-                img = remove(img, session=session_rembg)
+                # Downscale for faster inference, then upscale mask
+                small_img, scale = downscale_for_rembg(img)
+                small_result = remove(small_img, session=session_rembg)
+                if scale < 1.0:
+                    # Extract alpha from small result, upscale it, apply to original
+                    small_alpha = small_result.split()[3]
+                    full_alpha = small_alpha.resize(img.size, Image.LANCZOS)
+                    img.putalpha(full_alpha)
+                else:
+                    img = small_result
         except Exception as e:
             print(f"rembg failed: {e}")
         arr = np.array(img)
@@ -878,17 +905,23 @@ def process():
 
     image_count = len(files)
 
+    # Read all file data upfront (can't read Flask file objects in threads)
+    file_data = [(f.read(), os.path.splitext(f.filename)[0] + ".jpg") for f in files]
+
+    def _process(args):
+        data, name = args
+        return name, process_image(data, target_w, target_h, bg_color, remove_bg, fill_pct, bg_model)
+
     if image_count == 1:
-        f = files[0]
-        result = process_image(f.read(), target_w, target_h, bg_color, remove_bg, fill_pct, bg_model)
-        name = os.path.splitext(f.filename)[0] + ".jpg"
+        name, result = _process(file_data[0])
         response = send_file(result, mimetype="image/jpeg", as_attachment=True, download_name=name)
     else:
+        # Process images in parallel (2 workers to avoid OOM on Railway)
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(_process, file_data))
         zip_buf = io.BytesIO()
         with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
-            for f in files:
-                result = process_image(f.read(), target_w, target_h, bg_color, remove_bg, fill_pct, bg_model)
-                name = os.path.splitext(f.filename)[0] + ".jpg"
+            for name, result in results:
                 zf.writestr(name, result.read())
         zip_buf.seek(0)
         response = send_file(zip_buf, mimetype="application/zip", as_attachment=True, download_name="resized_images.zip")
