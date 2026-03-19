@@ -1036,15 +1036,63 @@
     progressPct.textContent = pct + '%';
   }
 
+  // Client-side compression: resize to max 1200px on longest edge
+  function compressImage(file, maxDim = 1200) {
+    return new Promise((resolve) => {
+      // Skip non-raster or small files
+      if (!file.type.startsWith('image/') || file.size < 50000) {
+        resolve(file);
+        return;
+      }
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const w = img.naturalWidth;
+        const h = img.naturalHeight;
+        // No resize needed if already within bounds
+        if (w <= maxDim && h <= maxDim) {
+          resolve(file);
+          return;
+        }
+        const scale = maxDim / Math.max(w, h);
+        const newW = Math.round(w * scale);
+        const newH = Math.round(h * scale);
+        const canvas = document.createElement('canvas');
+        canvas.width = newW;
+        canvas.height = newH;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, newW, newH);
+        canvas.toBlob((blob) => {
+          if (!blob) { resolve(file); return; }
+          const compressed = new File([blob], file.name, {
+            type: 'image/jpeg',
+            lastModified: file.lastModified
+          });
+          resolve(compressed);
+        }, 'image/jpeg', 0.85);
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        resolve(file);
+      };
+      img.src = url;
+    });
+  }
+
   btnProcess.addEventListener('click', async () => {
     if (!files.length) return;
     btnProcess.disabled = true;
     progressWrap.classList.add('active');
-    setProgress(10, 'Uploading images...');
+    setProgress(5, 'Compressing images...');
     setStatus('');
 
+    // Compress all images client-side before upload
+    const compressed = await Promise.all(files.map(f => compressImage(f)));
+
+    setProgress(10, 'Uploading images...');
     const formData = new FormData();
-    files.forEach(f => formData.append('images', f));
+    compressed.forEach(f => formData.append('images', f));
     formData.append('canvas_w', canvasW);
     formData.append('canvas_h', canvasH);
     formData.append('bg_color', bgColor);
