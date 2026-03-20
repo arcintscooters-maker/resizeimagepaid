@@ -1119,26 +1119,39 @@
       const filename = match ? match[1] : (files.length === 1 ? files[0].name.replace(/\.[^.]+$/, '') + '.jpg' : 'resized_images.zip');
       const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
       const isSingle = files.length === 1;
-      if (isMobile && isSingle) {
-        // On mobile, navigate to viewer page so user can long-press to save to Photos
-        const reader = new FileReader();
-        reader.onload = function(e) {
-          const dataUrl = e.target.result;
-          sessionStorage.setItem('pixelprep_img', dataUrl);
-          sessionStorage.setItem('pixelprep_filename', filename);
-          window.location.href = '/mobile-save';
-        };
-        reader.readAsDataURL(blob);
+
+      if (isMobile && isSingle && navigator.canShare) {
+        // Use Web Share API — opens native share sheet with "Save to Photos"
+        const shareFile = new File([blob], filename, { type: blob.type });
+        if (navigator.canShare({ files: [shareFile] })) {
+          try {
+            await navigator.share({ files: [shareFile] });
+            setProgress(100, 'Done!');
+            setStatus('✓ Image shared — save it to your Photos!', 'success');
+          } catch (shareErr) {
+            // User cancelled share — fall back to download
+            if (shareErr.name !== 'AbortError') {
+              const a = document.createElement('a');
+              a.download = filename; a.href = url; a.click();
+            }
+            setProgress(100, 'Done!');
+          }
+        } else {
+          // canShare doesn't support files — fall back to long-press viewer
+          const reader = new FileReader();
+          reader.onload = function(e) {
+            sessionStorage.setItem('pixelprep_img', e.target.result);
+            sessionStorage.setItem('pixelprep_filename', filename);
+            window.location.href = '/mobile-save';
+          };
+          reader.readAsDataURL(blob);
+        }
       } else {
         const a = document.createElement('a');
         a.download = filename;
         a.href = url;
         a.click();
         URL.revokeObjectURL(url);
-      }
-
-      setProgress(100, 'Done!');
-      if (!(isMobile && isSingle)) {
         setProgress(100, 'Done!');
         setStatus(`✓ ${files.length} image${files.length > 1 ? 's' : ''} processed and downloaded.`, 'success');
       }
