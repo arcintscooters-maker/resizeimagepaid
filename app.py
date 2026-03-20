@@ -38,32 +38,21 @@ GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD")
 QUALITY = 85
 SUBSAMPLING = 0
 
-# Load rembg sessions once at startup — dual model support
-REMBG_SESSION_QUALITY = None  # BiRefNet-lite — best quality edges
-REMBG_SESSION_FAST = None     # u2net — good quality, fast (~3s), max 10/upload
-BG_LIMITS = {"birefnet": 10, "u2net": 10, "none": 20}
-REMBG_MAX_DIM = 512  # Aggressive downscale before rembg — 4x faster inference
+# Load rembg session once at startup — BiRefNet only (emailed async)
+REMBG_SESSION = None
+BG_LIMITS = {"birefnet": 10, "none": 20}
+REMBG_MAX_DIM = 1024  # Full resolution for best quality — async so speed doesn't matter
 
-def get_rembg_session(model="birefnet"):
-    global REMBG_SESSION_QUALITY, REMBG_SESSION_FAST
-    if model == "birefnet":
-        if REMBG_SESSION_QUALITY is None:
-            try:
-                from rembg import new_session
-                REMBG_SESSION_QUALITY = new_session("birefnet-general-lite")
-                print("BiRefNet-lite session loaded")
-            except Exception as e:
-                print(f"BiRefNet-lite session failed: {e}")
-        return REMBG_SESSION_QUALITY
-    else:
-        if REMBG_SESSION_FAST is None:
-            try:
-                from rembg import new_session
-                REMBG_SESSION_FAST = new_session("u2net")
-                print("u2net session loaded")
-            except Exception as e:
-                print(f"u2net session failed: {e}")
-        return REMBG_SESSION_FAST
+def get_rembg_session():
+    global REMBG_SESSION
+    if REMBG_SESSION is None:
+        try:
+            from rembg import new_session
+            REMBG_SESSION = new_session("birefnet-general-lite")
+            print("BiRefNet-lite session loaded")
+        except Exception as e:
+            print(f"BiRefNet-lite session failed: {e}")
+    return REMBG_SESSION
 TRIAL_DAYS = 7
 ANON_FREE_IMAGES = 20
 
@@ -347,7 +336,7 @@ def process_image(img_bytes, target_w, target_h, bg_color_hex, remove_bg, fill_p
     if remove_bg:
         try:
             from rembg import remove
-            session_rembg = get_rembg_session(model=bg_model)
+            session_rembg = get_rembg_session()
             if session_rembg:
                 # Downscale for faster inference, then upscale mask
                 small_img, scale = downscale_for_rembg(img)
@@ -940,9 +929,7 @@ def process():
 
     bg_color = request.form.get("bg_color", "#ffffff")
     remove_bg = request.form.get("remove_bg", "false").lower() == "true"
-    bg_model = request.form.get("bg_model", "birefnet") if remove_bg else "none"
-    if bg_model not in ("birefnet", "u2net"):
-        bg_model = "birefnet"
+    bg_model = "birefnet" if remove_bg else "none"
     try:
         fill_pct = max(10, min(100, int(request.form.get("fill_pct", 95)))) / 100.0
     except:
