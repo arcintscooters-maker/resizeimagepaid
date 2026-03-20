@@ -769,6 +769,12 @@
       </div>
     </div>
 
+    <!-- Signup prompt for anon users -->
+    <div id="bgSignupPrompt" style="display:none;background:#fdf6ec;border:1px solid #e8d5b7;border-radius:10px;padding:12px 14px;font-size:13px;color:#8b6f4e;">
+      🔒 Create a free account to use AI background removal. Results are emailed to you.
+      <a href="/login" style="display:inline-block;margin-top:8px;background:#c84b2f;color:#fff;text-decoration:none;font-family:'Syne',sans-serif;font-size:11px;font-weight:700;letter-spacing:0.05em;padding:6px 14px;border-radius:6px;text-transform:uppercase;">Create account</a>
+    </div>
+
     <!-- Email notice — shown when remove bg is ON -->
     <div id="bgModelSection" style="display:none;">
       <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:10px;padding:12px 14px;font-size:13px;color:var(--muted);">
@@ -863,6 +869,7 @@
   let fillPct = 95;
   let removeBg = false;
   let bgModel = 'birefnet'; // always birefnet, emailed async
+  const isLoggedIn = {{ 'true' if user else 'false' }};
 
   // Elements
   const dropzone = document.getElementById('dropzone');
@@ -936,8 +943,14 @@
     }
   });
 
-  // Remove BG toggle — shows/hides colour section and email notice
+  // Remove BG toggle — requires account (results emailed)
   removeBgToggle.addEventListener('click', () => {
+    if (!isLoggedIn) {
+      // Prompt signup
+      document.getElementById('bgSignupPrompt').style.display = 'block';
+      setTimeout(() => document.getElementById('bgSignupPrompt').style.display = 'none', 5000);
+      return;
+    }
     removeBg = !removeBg;
     removeBgToggle.classList.toggle('on', removeBg);
     document.getElementById('bgModelSection').style.display = removeBg ? 'block' : 'none';
