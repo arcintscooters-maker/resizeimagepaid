@@ -8,8 +8,11 @@ from concurrent.futures import ThreadPoolExecutor
 import stripe
 import bcrypt
 import smtplib
+import threading
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email import encoders
 from flask import (Flask, request, send_file, render_template,
                    jsonify, session, redirect, url_for, make_response)
 from PIL import Image
@@ -726,6 +729,63 @@ def send_email(to, subject, html):
         print(f"Email error: {e}")
         return False
 
+def send_email_with_attachment(to, subject, html, attachment_bytes, attachment_name):
+    """Send email with a zip file attachment."""
+    if not GMAIL_USER or not GMAIL_APP_PASSWORD:
+        print(f"Email not configured. Would send to {to}: {subject}")
+        return False
+    try:
+        msg = MIMEMultipart("mixed")
+        msg["Subject"] = subject
+        msg["From"] = f"PixelPrep <{GMAIL_USER}>"
+        msg["To"] = to
+        msg.attach(MIMEText(html, "html"))
+        part = MIMEBase("application", "zip")
+        part.set_payload(attachment_bytes)
+        encoders.encode_base64(part)
+        part.add_header("Content-Disposition", f"attachment; filename={attachment_name}")
+        msg.attach(part)
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+            server.sendmail(GMAIL_USER, to, msg.as_string())
+        return True
+    except Exception as e:
+        print(f"Email attachment error: {e}")
+        return False
+
+def process_and_email(file_data, target_w, target_h, bg_color, fill_pct, bg_model, user_email):
+    """Process images in background thread and email results as zip."""
+    try:
+        def _process(args):
+            data, name = args
+            return name, process_image(data, target_w, target_h, bg_color, True, fill_pct, bg_model)
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(_process, file_data))
+
+        zip_buf = io.BytesIO()
+        with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            for name, result in results:
+                zf.writestr(name, result.read())
+        zip_buf.seek(0)
+
+        html = f"""
+        <div style="font-family:sans-serif;max-width:500px;margin:0 auto;padding:20px;">
+            <h2 style="color:#111;">Your images are ready! 📦</h2>
+            <p>Your <strong>{len(results)} image{'s' if len(results) > 1 else ''}</strong> processed with Quality AI mode {'are' if len(results) > 1 else 'is'} attached as a zip file.</p>
+            <p style="color:#666;font-size:13px;">Processed by <a href="{APP_URL}" style="color:#6C5CE7;">PixelPrep</a></p>
+        </div>
+        """
+        send_email_with_attachment(user_email, "Your PixelPrep images are ready!", html, zip_buf.read(), "pixelprep_images.zip")
+        print(f"Background processing complete — emailed {len(results)} images to {user_email}")
+    except Exception as e:
+        print(f"Background processing failed: {e}")
+        try:
+            send_email(user_email, "PixelPrep processing failed",
+                f'<p>Sorry, something went wrong processing your images. Please try again at <a href="{APP_URL}">{APP_URL}</a>.</p>')
+        except:
+            pass
+
 def create_email_token(user_id, token_type, expiry_hours=24):
     token = secrets.token_urlsafe(32)
     expires = datetime.now(timezone.utc) + timedelta(hours=expiry_hours)
@@ -900,6 +960,28 @@ def process():
 
     # Read all file data upfront (can't read Flask file objects in threads)
     file_data = [(f.read(), os.path.splitext(f.filename)[0] + ".jpg") for f in files]
+
+    # Quality mode (BiRefNet) → process in background and email results
+    if bg_model == "birefnet" and not is_anon:
+        user = get_user_by_id(session['user_id']) if 'user_id' in session else None
+        user_email = user.get('email') if user else None
+        if user_email:
+            # Track usage immediately
+            if user and user['subscription_status'] == 'trial':
+                try:
+                    conn = get_db()
+                    cur = conn.cursor()
+                    cur.execute("UPDATE users SET trial_images_used = trial_images_used + %s WHERE id = %s",
+                                (image_count, user['id']))
+                    conn.commit()
+                except:
+                    pass
+            # Launch background thread
+            t = threading.Thread(target=process_and_email,
+                                 args=(file_data, target_w, target_h, bg_color, fill_pct, bg_model, user_email))
+            t.daemon = True
+            t.start()
+            return jsonify({"status": "emailing", "email": user_email, "count": image_count}), 202
 
     def _process(args):
         data, name = args

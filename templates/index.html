@@ -781,8 +781,8 @@
         </div>
         <div class="toggle-row" id="btnQuality" onclick="setBgModel('birefnet')" style="cursor:pointer;border:1.5px solid var(--border2);border-radius:10px;padding:10px 14px;">
           <div class="toggle-info">
-            <div class="toggle-name">✨ Quality Mode <span style="font-size:11px;font-weight:400;color:var(--muted);">~4 seconds</span></div>
-            <div class="toggle-desc">BiRefNet model · best quality edges · max 10 images</div>
+            <div class="toggle-name">✨ Quality Mode <span style="font-size:11px;font-weight:400;color:var(--muted);">emailed to you</span></div>
+            <div class="toggle-desc">BiRefNet model · best quality edges · results sent to your email</div>
           </div>
         </div>
       </div>
@@ -1101,8 +1101,18 @@
     formData.append('bg_model', bgModel);
 
     try {
-      setProgress(40, removeBg ? (bgModel === 'birefnet' ? 'Removing backgrounds (Quality AI)...' : 'Removing backgrounds (Fast AI)...') : 'Processing images...');
+      setProgress(40, removeBg ? (bgModel === 'birefnet' ? 'Submitting for Quality AI processing...' : 'Removing backgrounds (Fast AI)...') : 'Processing images...');
       const res = await fetch('/process', { method: 'POST', body: formData });
+
+      // Quality mode → async email delivery (202 Accepted)
+      if (res.status === 202) {
+        const j = await res.json();
+        setProgress(100, 'Sent to your email!');
+        setStatus(`✓ ${j.count} image${j.count > 1 ? 's' : ''} being processed with Quality AI. We'll email the results to ${j.email} shortly.`, 'success');
+        btnProcess.disabled = false;
+        setTimeout(() => progressWrap.classList.remove('active'), 4000);
+        return;
+      }
 
       if (!res.ok) {
         let err = 'Server error';
