@@ -631,12 +631,36 @@
       line-height: 1.5;
     }
 
+    .btn-process-mobile {
+      display: none;
+    }
+
     /* Responsive */
     @media (max-width: 768px) {
       .layout { grid-template-columns: 1fr; }
       .panel { border-right: none; border-bottom: 1px solid var(--border); }
       .topbar { padding: 12px 20px; }
       .upload-area { padding: 20px; }
+      .btn-process { display: none; }
+      .btn-process-mobile {
+        display: block;
+        width: 100%;
+        padding: 16px;
+        font-family: 'Syne', sans-serif;
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        background: var(--text);
+        color: var(--surface);
+        border: none;
+        border-radius: 10px;
+        cursor: pointer;
+        transition: opacity 0.15s, transform 0.1s;
+        margin-top: 16px;
+      }
+      .btn-process-mobile:hover:not(:disabled) { opacity: 0.85; }
+      .btn-process-mobile:disabled { opacity: 0.4; cursor: not-allowed; }
     }
   </style>
 </head>
@@ -814,6 +838,8 @@
 
     <div class="status" id="status"></div>
 
+    <button class="btn-process-mobile" id="btnProcessMobile" disabled>Process &amp; Download</button>
+
     <!-- Info & Disclaimers -->
     <div class="info-section">
       <div class="info-grid">
@@ -879,7 +905,11 @@
   const fileInput = document.getElementById('fileInput');
   const fileGrid = document.getElementById('fileGrid');
   const btnProcess = document.getElementById('btnProcess');
+  const btnProcessMobile = document.getElementById('btnProcessMobile');
   const btnClear = document.getElementById('btnClear');
+
+  // Sync both process buttons (desktop panel + mobile below images)
+  function setProcessDisabled(val) { btnProcess.disabled = val; btnProcessMobile.disabled = val; }
   const countLabel = document.getElementById('countLabel');
   const progressWrap = document.getElementById('progressWrap');
   const progressFill = document.getElementById('progressFill');
@@ -991,7 +1021,7 @@
     });
     const n = files.length;
     countLabel.textContent = n === 0 ? '— none selected' : `— ${n} image${n > 1 ? 's' : ''}`;
-    btnProcess.disabled = n === 0;
+    setProcessDisabled(n === 0);
     btnClear.style.display = n > 0 ? 'block' : 'none';
     dropzone.style.display = n > 4 ? 'none' : 'block';
   }
@@ -1072,9 +1102,9 @@
     });
   }
 
-  btnProcess.addEventListener('click', async () => {
+  async function handleProcess() {
     if (!files.length) return;
-    btnProcess.disabled = true;
+    setProcessDisabled(true);
     progressWrap.classList.add('active');
     setProgress(5, 'Compressing images...');
     setStatus('');
@@ -1100,7 +1130,7 @@
         const j = await res.json();
         setProgress(100, 'Sent to your email!');
         setStatus(`✓ ${j.count} image${j.count > 1 ? 's' : ''} being processed with Quality AI. We'll email the results to ${j.email} shortly.`, 'success');
-        btnProcess.disabled = false;
+        setProcessDisabled(false);
         setTimeout(() => progressWrap.classList.remove('active'), 4000);
         return;
       }
@@ -1159,10 +1189,12 @@
       setStatus('✗ ' + err.message, 'error');
       setProgress(0, '');
     } finally {
-      btnProcess.disabled = false;
+      setProcessDisabled(false);
       setTimeout(() => progressWrap.classList.remove('active'), 3000);
     }
-  });
+  }
+  btnProcess.addEventListener('click', handleProcess);
+  btnProcessMobile.addEventListener('click', handleProcess);
 
   function toggleMenu() {
     const d = document.getElementById('menuDropdown');
