@@ -838,6 +838,14 @@
 
     <div class="status" id="status"></div>
 
+    <!-- Mobile: processed images gallery with Save to Photos button -->
+    <div id="mobileResults" style="display:none;">
+      <div id="mobileResultsGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;"></div>
+      <button id="btnSavePhotos" style="width:100%;padding:14px;font-family:'Syne',sans-serif;font-size:13px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;background:#2a7a4b;color:#fff;border:none;border-radius:10px;cursor:pointer;">
+        Save All to Photos
+      </button>
+    </div>
+
     <button class="btn-process-mobile" id="btnProcessMobile" disabled>Process &amp; Download</button>
 
     <!-- Info & Disclaimers -->
@@ -1124,9 +1132,9 @@
     const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
     try {
-      // Mobile: send images one at a time, collect individual blobs for share sheet
+      // Mobile: send images one at a time, show results inline with Save to Photos button
       if (isMobile && !removeBg) {
-        const shareFiles = [];
+        const mobileShareFiles = [];
         for (let i = 0; i < compressed.length; i++) {
           setProgress(10 + Math.round(80 * i / compressed.length), `Processing image ${i + 1} of ${compressed.length}...`);
           const singleForm = new FormData();
@@ -1146,33 +1154,46 @@
           const cd = res.headers.get('Content-Disposition') || '';
           const match = cd.match(/filename="?([^"]+)"?/);
           const name = match ? match[1] : compressed[i].name.replace(/\.[^.]+$/, '') + '.jpg';
-          shareFiles.push(new File([blob], name, { type: 'image/jpeg' }));
+          mobileShareFiles.push(new File([blob], name, { type: 'image/jpeg' }));
         }
-        setProgress(95, 'Opening share sheet...');
-        if (navigator.canShare && navigator.canShare({ files: shareFiles })) {
-          try {
-            await navigator.share({ files: shareFiles });
-            setProgress(100, 'Done!');
-            setStatus(`✓ ${shareFiles.length} image${shareFiles.length > 1 ? 's' : ''} ready — save to your Photos!`, 'success');
-          } catch (shareErr) {
-            if (shareErr.name !== 'AbortError') {
-              // Fallback: download individually
-              shareFiles.forEach(f => {
-                const a = document.createElement('a');
-                a.download = f.name; a.href = URL.createObjectURL(f); a.click();
-              });
+        setProgress(100, 'Done!');
+
+        // Show processed images inline as thumbnails
+        const grid = document.getElementById('mobileResultsGrid');
+        grid.innerHTML = '';
+        mobileShareFiles.forEach(f => {
+          const imgUrl = URL.createObjectURL(f);
+          const div = document.createElement('div');
+          div.style.cssText = 'background:#f5f2ee;border:1px solid #e0d9cf;border-radius:8px;overflow:hidden;';
+          div.innerHTML = `<img src="${imgUrl}" style="width:100%;display:block;" alt="${f.name}"/>`;
+          grid.appendChild(div);
+        });
+        document.getElementById('mobileResults').style.display = 'block';
+        setStatus(`✓ ${mobileShareFiles.length} image${mobileShareFiles.length > 1 ? 's' : ''} ready! Tap the button below to save.`, 'success');
+
+        // Wire up Save to Photos button (fresh user gesture)
+        const btnSave = document.getElementById('btnSavePhotos');
+        const newBtn = btnSave.cloneNode(true);
+        btnSave.parentNode.replaceChild(newBtn, btnSave);
+        newBtn.addEventListener('click', async () => {
+          if (navigator.canShare && navigator.canShare({ files: mobileShareFiles })) {
+            try {
+              await navigator.share({ files: mobileShareFiles });
+            } catch (e) {
+              if (e.name !== 'AbortError') {
+                mobileShareFiles.forEach(f => {
+                  const a = document.createElement('a');
+                  a.download = f.name; a.href = URL.createObjectURL(f); a.click();
+                });
+              }
             }
-            setProgress(100, 'Done!');
+          } else {
+            mobileShareFiles.forEach(f => {
+              const a = document.createElement('a');
+              a.download = f.name; a.href = URL.createObjectURL(f); a.click();
+            });
           }
-        } else {
-          // No share API — download individually
-          shareFiles.forEach(f => {
-            const a = document.createElement('a');
-            a.download = f.name; a.href = URL.createObjectURL(f); a.click();
-          });
-          setProgress(100, 'Done!');
-          setStatus(`✓ ${shareFiles.length} image${shareFiles.length > 1 ? 's' : ''} downloaded.`, 'success');
-        }
+        });
       } else {
         // Desktop or remove-bg: send all at once
         setProgress(40, removeBg ? 'Submitting for AI background removal...' : 'Processing images...');
