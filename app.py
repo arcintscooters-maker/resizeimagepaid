@@ -358,7 +358,13 @@ def process_image(img_bytes, target_w, target_h, bg_color_hex, remove_bg, fill_p
         bg_layer.paste(img, mask=img.split()[3])
         img_rgb = bg_layer.convert("RGB")
     else:
-        img_rgb = img.convert("RGB")
+        # Handle transparent PNGs — composite onto white before converting
+        if img.mode == 'RGBA' and img.split()[3].getextrema()[0] < 255:
+            white_bg = Image.new("RGBA", img.size, (255, 255, 255, 255))
+            white_bg.paste(img, mask=img.split()[3])
+            img_rgb = white_bg.convert("RGB")
+        else:
+            img_rgb = img.convert("RGB")
         img_rgb = autocrop_white(img_rgb)
     canvas = fit_and_place(img_rgb, target_w, target_h, bg_rgb, fill_pct)
     return save_optimised(canvas)
