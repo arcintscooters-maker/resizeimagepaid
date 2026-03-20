@@ -36,28 +36,21 @@ QUALITY = 85
 SUBSAMPLING = 0
 
 # Load rembg sessions once at startup — dual model support
-REMBG_SESSION_QUALITY = None  # BiRefNet-lite — good quality, faster (~8-10s)
+REMBG_SESSION_QUALITY = None  # ISNet — good quality, fast on CPU (~4-5s)
 REMBG_SESSION_FAST = None     # u2net — good quality, fast (~3s), max 10/upload
-BG_LIMITS = {"birefnet": 5, "u2net": 10, "none": 20}
+BG_LIMITS = {"isnet": 10, "u2net": 10, "none": 20}
 REMBG_MAX_DIM = 1024  # Downscale images before rembg for speed
 
-def get_rembg_session(model="birefnet"):
+def get_rembg_session(model="isnet"):
     global REMBG_SESSION_QUALITY, REMBG_SESSION_FAST
-    if model == "birefnet":
+    if model == "isnet":
         if REMBG_SESSION_QUALITY is None:
             try:
                 from rembg import new_session
-                REMBG_SESSION_QUALITY = new_session("birefnet-general-lite")
-                print("BiRefNet-lite session loaded")
+                REMBG_SESSION_QUALITY = new_session("isnet-general-use")
+                print("ISNet session loaded")
             except Exception as e:
-                print(f"BiRefNet-lite session failed: {e}")
-                # Fallback to full model
-                try:
-                    from rembg import new_session
-                    REMBG_SESSION_QUALITY = new_session("birefnet-general")
-                    print("BiRefNet full session loaded (fallback)")
-                except Exception as e2:
-                    print(f"BiRefNet fallback also failed: {e2}")
+                print(f"ISNet session failed: {e}")
         return REMBG_SESSION_QUALITY
     else:
         if REMBG_SESSION_FAST is None:
@@ -345,7 +338,7 @@ def downscale_for_rembg(img, max_dim=REMBG_MAX_DIM):
     new_w, new_h = int(w * scale), int(h * scale)
     return img.resize((new_w, new_h), Image.LANCZOS), scale
 
-def process_image(img_bytes, target_w, target_h, bg_color_hex, remove_bg, fill_pct=0.95, bg_model='birefnet'):
+def process_image(img_bytes, target_w, target_h, bg_color_hex, remove_bg, fill_pct=0.95, bg_model='isnet'):
     bg_rgb = hex_to_rgb(bg_color_hex)
     img = Image.open(io.BytesIO(img_bytes)).convert("RGBA")
     if remove_bg:
@@ -887,9 +880,9 @@ def process():
 
     bg_color = request.form.get("bg_color", "#ffffff")
     remove_bg = request.form.get("remove_bg", "false").lower() == "true"
-    bg_model = request.form.get("bg_model", "birefnet") if remove_bg else "none"
-    if bg_model not in ("birefnet", "u2net"):
-        bg_model = "birefnet"
+    bg_model = request.form.get("bg_model", "isnet") if remove_bg else "none"
+    if bg_model not in ("isnet", "u2net"):
+        bg_model = "isnet"
     try:
         fill_pct = max(10, min(100, int(request.form.get("fill_pct", 95)))) / 100.0
     except:
