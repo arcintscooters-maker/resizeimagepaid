@@ -1121,68 +1121,85 @@
     formData.append('fill_pct', fillPct);
     formData.append('remove_bg', removeBg ? 'true' : 'false');
 
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
     try {
-      setProgress(40, removeBg ? 'Submitting for AI background removal...' : 'Processing images...');
-      const res = await fetch('/process', { method: 'POST', body: formData });
-
-      // Quality mode → async email delivery (202 Accepted)
-      if (res.status === 202) {
-        const j = await res.json();
-        setProgress(100, 'Sent to your email!');
-        setStatus(`✓ ${j.count} image${j.count > 1 ? 's' : ''} being processed with Quality AI. We'll email the results to ${j.email} shortly.`, 'success');
-        setProcessDisabled(false);
-        setTimeout(() => progressWrap.classList.remove('active'), 4000);
-        return;
-      }
-
-      if (!res.ok) {
-        let err = 'Server error';
-        try { const j = await res.json(); err = j.error || err; } catch {}
-        throw new Error(err);
-      }
-
-      setProgress(90, 'Preparing download...');
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const cd = res.headers.get('Content-Disposition') || '';
-      const match = cd.match(/filename="?([^"]+)"?/);
-      const filename = match ? match[1] : (files.length === 1 ? files[0].name.replace(/\.[^.]+$/, '') + '.jpg' : 'resized_images.zip');
-      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-
-      if (isMobile && navigator.canShare) {
-        let shareFiles = [];
-        if (blob.type === 'application/zip') {
-          // Extract images from zip for sharing
-          const JSZip = (await import('https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm')).default;
-          const zip = await JSZip.loadAsync(blob);
-          for (const [name, entry] of Object.entries(zip.files)) {
-            if (!entry.dir) {
-              const imgBlob = await entry.async('blob');
-              shareFiles.push(new File([imgBlob], name, { type: 'image/jpeg' }));
-            }
+      // Mobile: send images one at a time, collect individual blobs for share sheet
+      if (isMobile && !removeBg) {
+        const shareFiles = [];
+        for (let i = 0; i < compressed.length; i++) {
+          setProgress(10 + Math.round(80 * i / compressed.length), `Processing image ${i + 1} of ${compressed.length}...`);
+          const singleForm = new FormData();
+          singleForm.append('images', compressed[i]);
+          singleForm.append('canvas_w', canvasW);
+          singleForm.append('canvas_h', canvasH);
+          singleForm.append('bg_color', bgColor);
+          singleForm.append('fill_pct', fillPct);
+          singleForm.append('remove_bg', 'false');
+          const res = await fetch('/process', { method: 'POST', body: singleForm });
+          if (!res.ok) {
+            let err = 'Server error';
+            try { const j = await res.json(); err = j.error || err; } catch {}
+            throw new Error(err);
           }
-        } else {
-          shareFiles.push(new File([blob], filename, { type: blob.type }));
+          const blob = await res.blob();
+          const cd = res.headers.get('Content-Disposition') || '';
+          const match = cd.match(/filename="?([^"]+)"?/);
+          const name = match ? match[1] : compressed[i].name.replace(/\.[^.]+$/, '') + '.jpg';
+          shareFiles.push(new File([blob], name, { type: 'image/jpeg' }));
         }
-        if (navigator.canShare({ files: shareFiles })) {
+        setProgress(95, 'Opening share sheet...');
+        if (navigator.canShare && navigator.canShare({ files: shareFiles })) {
           try {
             await navigator.share({ files: shareFiles });
             setProgress(100, 'Done!');
-            setStatus(`✓ ${shareFiles.length} image${shareFiles.length > 1 ? 's' : ''} shared — save to your Photos!`, 'success');
+            setStatus(`✓ ${shareFiles.length} image${shareFiles.length > 1 ? 's' : ''} ready — save to your Photos!`, 'success');
           } catch (shareErr) {
             if (shareErr.name !== 'AbortError') {
-              const a = document.createElement('a');
-              a.download = filename; a.href = url; a.click();
+              // Fallback: download individually
+              shareFiles.forEach(f => {
+                const a = document.createElement('a');
+                a.download = f.name; a.href = URL.createObjectURL(f); a.click();
+              });
             }
             setProgress(100, 'Done!');
           }
         } else {
-          // Fallback — download file
-          const a = document.createElement('a');
-          a.download = filename; a.href = url; a.click();
+          // No share API — download individually
+          shareFiles.forEach(f => {
+            const a = document.createElement('a');
+            a.download = f.name; a.href = URL.createObjectURL(f); a.click();
+          });
           setProgress(100, 'Done!');
+          setStatus(`✓ ${shareFiles.length} image${shareFiles.length > 1 ? 's' : ''} downloaded.`, 'success');
         }
       } else {
+        // Desktop or remove-bg: send all at once
+        setProgress(40, removeBg ? 'Submitting for AI background removal...' : 'Processing images...');
+        const res = await fetch('/process', { method: 'POST', body: formData });
+
+        // Remove BG → async email delivery (202 Accepted)
+        if (res.status === 202) {
+          const j = await res.json();
+          setProgress(100, 'Sent to your email!');
+          setStatus(`✓ ${j.count} image${j.count > 1 ? 's' : ''} being processed with Quality AI. We'll email the results to ${j.email} shortly.`, 'success');
+          setProcessDisabled(false);
+          setTimeout(() => progressWrap.classList.remove('active'), 4000);
+          return;
+        }
+
+        if (!res.ok) {
+          let err = 'Server error';
+          try { const j = await res.json(); err = j.error || err; } catch {}
+          throw new Error(err);
+        }
+
+        setProgress(90, 'Preparing download...');
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const cd = res.headers.get('Content-Disposition') || '';
+        const match = cd.match(/filename="?([^"]+)"?/);
+        const filename = match ? match[1] : (files.length === 1 ? files[0].name.replace(/\.[^.]+$/, '') + '.jpg' : 'resized_images.zip');
         const a = document.createElement('a');
         a.download = filename;
         a.href = url;
