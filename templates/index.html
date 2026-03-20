@@ -1158,6 +1158,10 @@
         }
         setProgress(100, 'Done!');
 
+        // Hide the original uploaded images
+        document.getElementById('fileGrid').style.display = 'none';
+        document.getElementById('dropzone').style.display = 'none';
+
         // Show processed images inline as thumbnails
         const grid = document.getElementById('mobileResultsGrid');
         grid.innerHTML = '';
