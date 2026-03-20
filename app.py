@@ -653,6 +653,10 @@ def terms():
 def privacy():
     return render_template("privacy.html")
 
+@app.route("/pricing")
+def pricing_page():
+    return render_template("pricing.html")
+
 @app.route("/subscribe")
 @login_required
 def subscribe_page():

@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Pricing — PixelPrep</title>
+  {% include "seo_head.html" %}
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Mono:wght@400;500&family=Syne:wght@700;800&display=swap" rel="stylesheet"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #f5f2ee; --surface: #fff; --surface2: #f0ece6;
+      --border: #e0d9cf; --text: #1a1714; --muted: #8c8278;
+      --accent: #c84b2f; --success: #2a7a4b;
+    }
+    body { background: var(--bg); color: var(--text); font-family: 'DM Mono', monospace; }
+
+    /* Topbar */
+    .topbar { background: var(--text); color: #f5f2ee; padding: 14px 40px; display: flex; align-items: center; justify-content: space-between; }
+    .logo { font-family: 'Syne', sans-serif; font-size: 20px; font-weight: 800; text-decoration: none; color: #f5f2ee; }
+    .logo span { color: var(--accent); }
+    .topbar-links { display: flex; gap: 20px; align-items: center; }
+    .topbar-links a { font-size: 12px; color: #8c8278; text-decoration: none; letter-spacing: 0.05em; }
+    .topbar-links a:hover { color: #f5f2ee; }
+    .topbar-cta { background: var(--accent); color: #fff !important; padding: 8px 18px; border-radius: 6px; font-family: 'Syne', sans-serif; font-weight: 700; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; }
+
+    /* Hero */
+    .hero { padding: 80px 40px 60px; max-width: 800px; margin: 0 auto; text-align: center; }
+    .hero-eyebrow { font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--accent); margin-bottom: 16px; }
+    .hero h1 { font-family: 'Instrument Serif', serif; font-size: clamp(36px, 5vw, 56px); line-height: 1.1; margin-bottom: 16px; }
+    .hero h1 em { font-style: italic; color: var(--accent); }
+    .hero p { font-size: 15px; color: var(--muted); line-height: 1.8; max-width: 550px; margin: 0 auto; }
+
+    /* Pricing cards */
+    .pricing-section { max-width: 900px; margin: 0 auto; padding: 0 40px 60px; }
+    .pricing-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+    .plan-card { background: var(--surface); border: 1.5px solid var(--border); border-radius: 16px; padding: 36px 32px; position: relative; }
+    .plan-card.featured { border: 2px solid var(--accent); }
+    .plan-badge { position: absolute; top: -12px; left: 50%; transform: translateX(-50%); background: var(--accent); color: #fff; font-family: 'Syne', sans-serif; font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; padding: 4px 16px; border-radius: 20px; white-space: nowrap; }
+    .plan-name { font-family: 'Syne', sans-serif; font-size: 18px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; margin-bottom: 8px; }
+    .plan-price { font-family: 'Syne', sans-serif; font-size: 48px; font-weight: 800; margin: 16px 0 4px; }
+    .plan-price span { font-size: 16px; font-weight: 400; color: var(--muted); }
+    .plan-desc { font-size: 12px; color: var(--muted); margin-bottom: 28px; }
+    .plan-features { display: flex; flex-direction: column; gap: 12px; margin-bottom: 28px; }
+    .plan-feature { font-size: 12px; color: var(--text); display: flex; align-items: flex-start; gap: 8px; line-height: 1.5; }
+    .plan-feature .check { color: var(--success); font-weight: 700; flex-shrink: 0; }
+    .plan-feature .muted { color: var(--muted); }
+    .plan-btn { display: block; width: 100%; text-align: center; padding: 14px; border-radius: 10px; font-family: 'Syne', sans-serif; font-size: 13px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; text-decoration: none; cursor: pointer; border: none; transition: opacity 0.15s; }
+    .plan-btn:hover { opacity: 0.85; }
+    .plan-btn-primary { background: var(--accent); color: #fff; }
+    .plan-btn-secondary { background: var(--text); color: #f5f2ee; }
+
+    /* FAQ */
+    .faq-section { max-width: 700px; margin: 0 auto; padding: 60px 40px; }
+    .faq-title { font-family: 'Instrument Serif', serif; font-size: 32px; text-align: center; margin-bottom: 36px; }
+    .faq-title em { font-style: italic; color: var(--accent); }
+    .faq-item { border-bottom: 1px solid var(--border); padding: 20px 0; }
+    .faq-q { font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 700; margin-bottom: 8px; }
+    .faq-a { font-size: 13px; color: var(--muted); line-height: 1.8; }
+
+    hr.divider { border: none; border-top: 1px solid var(--border); margin: 0; }
+
+    /* CTA */
+    .cta-section { background: var(--text); color: #f5f2ee; padding: 80px 40px; text-align: center; }
+    .cta-section h2 { font-family: 'Instrument Serif', serif; font-size: clamp(28px, 4vw, 44px); margin-bottom: 16px; }
+    .cta-section h2 em { font-style: italic; color: var(--accent); }
+    .cta-section p { font-size: 14px; color: #8c8278; margin-bottom: 28px; }
+    .cta-btn { display: inline-block; background: var(--accent); color: #fff; text-decoration: none; padding: 16px 36px; border-radius: 10px; font-family: 'Syne', sans-serif; font-weight: 800; font-size: 15px; letter-spacing: 0.05em; text-transform: uppercase; }
+    .cta-btn:hover { opacity: 0.85; }
+
+    /* Footer */
+    footer { background: var(--surface); border-top: 1px solid var(--border); padding: 20px 40px; display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: var(--muted); }
+    footer a { color: var(--muted); text-decoration: none; margin-left: 16px; }
+    footer a:hover { color: var(--text); }
+
+    @media (max-width: 768px) {
+      .hero { padding: 50px 20px 40px; }
+      .hero h1 { font-size: 32px; }
+      .pricing-section { padding: 0 20px 40px; }
+      .pricing-grid { grid-template-columns: 1fr; }
+      .faq-section { padding: 40px 20px; }
+      .topbar { padding: 12px 20px; }
+      .topbar-links a:not(.topbar-cta) { display: none; }
+      .cta-section { padding: 50px 20px; }
+      footer { flex-direction: column; gap: 10px; text-align: center; padding: 20px; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="topbar">
+  <a class="logo" href="/">Pixel<span>Prep</span></a>
+  <div class="topbar-links">
+    <a href="/how-it-works">How it works</a>
+    <a href="/pricing">Pricing</a>
+    <a href="/" class="topbar-cta">Try free</a>
+  </div>
+</div>
+
+<div class="hero">
+  <div class="hero-eyebrow">Pricing</div>
+  <h1>Simple pricing,<br/><em>no surprises</em></h1>
+  <p>Start free with 20 images. Upgrade when you're ready — one plan, everything included.</p>
+</div>
+
+<div class="pricing-section">
+  <div class="pricing-grid">
+
+    <!-- Free -->
+    <div class="plan-card">
+      <div class="plan-name">Free</div>
+      <div class="plan-price">$0</div>
+      <div class="plan-desc">Try it out — no account needed</div>
+      <div class="plan-features">
+        <div class="plan-feature"><span class="check">✓</span> 20 free image resizes</div>
+        <div class="plan-feature"><span class="check">✓</span> Smart resize &amp; canvas fit</div>
+        <div class="plan-feature"><span class="check">✓</span> All canvas sizes (custom included)</div>
+        <div class="plan-feature"><span class="check">✓</span> Fill % slider</div>
+        <div class="plan-feature"><span class="check">✓</span> Optimised JPEG output</div>
+        <div class="plan-feature"><span class="check">✓</span> EXIF metadata stripped</div>
+        <div class="plan-feature"><span class="muted">—</span> <span class="muted">No AI background removal</span></div>
+        <div class="plan-feature"><span class="muted">—</span> <span class="muted">Limited to 20 images total</span></div>
+      </div>
+      <a href="/" class="plan-btn plan-btn-secondary">Start for free</a>
+    </div>
+
+    <!-- Pro -->
+    <div class="plan-card featured">
+      <div class="plan-badge">Most popular</div>
+      <div class="plan-name">Pro</div>
+      <div class="plan-price">SGD 1.99 <span>/ month</span></div>
+      <div class="plan-desc">Unlimited images. Cancel anytime.</div>
+      <div class="plan-features">
+        <div class="plan-feature"><span class="check">✓</span> <strong>Unlimited</strong> image processing</div>
+        <div class="plan-feature"><span class="check">✓</span> Smart resize &amp; canvas fit</div>
+        <div class="plan-feature"><span class="check">✓</span> All canvas sizes (custom included)</div>
+        <div class="plan-feature"><span class="check">✓</span> Fill % slider</div>
+        <div class="plan-feature"><span class="check">✓</span> Optimised JPEG output</div>
+        <div class="plan-feature"><span class="check">✓</span> EXIF metadata stripped</div>
+        <div class="plan-feature"><span class="check">✓</span> <strong>AI background removal</strong> (BiRefNet)</div>
+        <div class="plan-feature"><span class="check">✓</span> <strong>24 background colours</strong> + custom picker</div>
+        <div class="plan-feature"><span class="check">✓</span> Results emailed as zip</div>
+        <div class="plan-feature"><span class="check">✓</span> Batch processing (up to 10 images)</div>
+      </div>
+      <a href="/login" class="plan-btn plan-btn-primary">Get started — SGD 1.99/mo</a>
+    </div>
+
+  </div>
+</div>
+
+<hr class="divider"/>
+
+<!-- FAQ -->
+<div class="faq-section">
+  <div class="faq-title">Frequently asked <em>questions</em></div>
+
+  <div class="faq-item">
+    <div class="faq-q">Do I need an account to use PixelPrep?</div>
+    <div class="faq-a">No — you can resize up to 20 images for free without an account. You only need an account for unlimited processing and AI background removal.</div>
+  </div>
+
+  <div class="faq-item">
+    <div class="faq-q">What payment methods do you accept?</div>
+    <div class="faq-a">We accept all major credit and debit cards (Visa, Mastercard, Amex) through Stripe. Your payment details are never stored on our servers.</div>
+  </div>
+
+  <div class="faq-item">
+    <div class="faq-q">Can I cancel anytime?</div>
+    <div class="faq-a">Yes — cancel from your account menu at any time. No lock-in, no cancellation fees. Your subscription continues until the end of the billing period.</div>
+  </div>
+
+  <div class="faq-item">
+    <div class="faq-q">How does AI background removal work?</div>
+    <div class="faq-a">Toggle "Remove background" on, choose your background colour, and upload your images. Our AI (BiRefNet) processes them on the server and emails the results to your account email as a zip file. You can close the page while we process.</div>
+  </div>
+
+  <div class="faq-item">
+    <div class="faq-q">What image formats are supported?</div>
+    <div class="faq-a">Upload JPG, PNG, WEBP, or GIF. All images are output as optimised progressive JPEGs with EXIF metadata stripped for the smallest file size at the best visual quality.</div>
+  </div>
+
+  <div class="faq-item">
+    <div class="faq-q">Are my images stored on your servers?</div>
+    <div class="faq-a">No. Images are processed in memory and immediately discarded after download or email delivery. We never store, retain, or use your product images for any purpose.</div>
+  </div>
+
+  <div class="faq-item">
+    <div class="faq-q">What marketplaces does PixelPrep work with?</div>
+    <div class="faq-a">PixelPrep outputs standard square JPEGs that work with Shopify, Lazada, Shopee, Amazon, Qoo10, Carousell, and any other platform that accepts JPEG images.</div>
+  </div>
+</div>
+
+<!-- CTA -->
+<div class="cta-section">
+  <h2>Ready to prep your<br/><em>product images?</em></h2>
+  <p>20 free images — no account needed. Then SGD 1.99/month unlimited.</p>
+  <a href="/" class="cta-btn">Start for free</a>
+</div>
+
+<footer>
+  <span>&copy; 2026 Inlinex Private Limited &middot; PixelPrep</span>
+  <div>
+    <a href="/how-it-works">How it works</a>
+    <a href="/pricing">Pricing</a>
+    <a href="/terms">Terms</a>
+    <a href="/privacy">Privacy</a>
+    <a href="/contact">Contact</a>
+  </div>
+</footer>
+
+</body>
+</html>
