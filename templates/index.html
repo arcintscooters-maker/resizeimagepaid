@@ -779,10 +779,10 @@
             <div class="toggle-desc">u2net model · good for most product photos · max 10 images</div>
           </div>
         </div>
-        <div class="toggle-row" id="btnQuality" onclick="setBgModel('isnet')" style="cursor:pointer;border:1.5px solid var(--border2);border-radius:10px;padding:10px 14px;">
+        <div class="toggle-row" id="btnQuality" onclick="setBgModel('birefnet')" style="cursor:pointer;border:1.5px solid var(--border2);border-radius:10px;padding:10px 14px;">
           <div class="toggle-info">
             <div class="toggle-name">✨ Quality Mode <span style="font-size:11px;font-weight:400;color:var(--muted);">~4 seconds</span></div>
-            <div class="toggle-desc">ISNet model · sharp edges · great for product photos · max 10 images</div>
+            <div class="toggle-desc">BiRefNet model · best quality edges · max 10 images</div>
           </div>
         </div>
       </div>
@@ -874,7 +874,7 @@
   let bgColor = '#ffffff';
   let fillPct = 95;
   let removeBg = false;
-  let bgModel = 'u2net'; // 'u2net' (fast) or 'isnet' (quality)
+  let bgModel = 'u2net'; // 'u2net' (fast) or 'birefnet' (quality)
 
   // Elements
   const dropzone = document.getElementById('dropzone');
@@ -961,8 +961,8 @@
     const btnQuality = document.getElementById('btnQuality');
     btnFast.style.border = model === 'u2net' ? '2px solid var(--accent)' : '1.5px solid var(--border2)';
     btnFast.querySelector('.toggle-name').style.color = model === 'u2net' ? 'var(--accent)' : 'var(--text)';
-    btnQuality.style.border = model === 'isnet' ? '2px solid var(--accent)' : '1.5px solid var(--border2)';
-    btnQuality.querySelector('.toggle-name').style.color = model === 'isnet' ? 'var(--accent)' : 'var(--text)';
+    btnQuality.style.border = model === 'birefnet' ? '2px solid var(--accent)' : '1.5px solid var(--border2)';
+    btnQuality.querySelector('.toggle-name').style.color = model === 'birefnet' ? 'var(--accent)' : 'var(--text)';
     // Update max file hint
     const limit = 10;
     document.getElementById('bgModelSection').setAttribute('data-limit', limit);
@@ -1101,7 +1101,7 @@
     formData.append('bg_model', bgModel);
 
     try {
-      setProgress(40, removeBg ? (bgModel === 'isnet' ? 'Removing backgrounds (Quality AI)...' : 'Removing backgrounds (Fast AI)...') : 'Processing images...');
+      setProgress(40, removeBg ? (bgModel === 'birefnet' ? 'Removing backgrounds (Quality AI)...' : 'Removing backgrounds (Fast AI)...') : 'Processing images...');
       const res = await fetch('/process', { method: 'POST', body: formData });
 
       if (!res.ok) {
