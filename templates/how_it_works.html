@@ -104,17 +104,39 @@
     footer a { color: var(--muted); text-decoration: none; margin-left: 16px; }
     footer a:hover { color: var(--text); }
 
+    /* Tabs */
+    .tab-bar { display: flex; gap: 0; margin-bottom: 32px; border-bottom: 2px solid var(--border); }
+    .tab-btn { flex: 1; padding: 12px 16px; font-family: 'Syne', sans-serif; font-size: 13px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; background: none; border: none; color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; transition: color 0.15s, border-color 0.15s; }
+    .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* Note box */
+    .note-box { background: #fdf6ec; border: 1px solid #e8d5b7; border-radius: 10px; padding: 16px 20px; font-size: 13px; color: #8b6f4e; line-height: 1.7; margin-top: 24px; }
+    .note-box strong { color: #6b4c1a; }
+
     /* Responsive */
     @media (max-width: 768px) {
+      .hero { padding: 50px 20px 40px; }
+      .hero h1 { font-size: 32px; }
+      .hero p { font-size: 14px; }
       .ba-grid { grid-template-columns: 1fr; }
       .ba-arrow { transform: rotate(90deg); text-align: center; }
       .bg-grid, .fill-grid { grid-template-columns: repeat(2, 1fr); }
       .feature-grid { grid-template-columns: 1fr; }
       .compare-grid { grid-template-columns: 1fr; }
-      .hero-steps { flex-direction: column; align-items: flex-start; gap: 16px; }
+      .hero-steps { flex-direction: column; align-items: center; gap: 16px; }
+      .hero-step { flex-direction: row; gap: 12px; }
       .hero-step::after { display: none; }
+      .step-label { text-align: left; }
       section { padding: 40px 20px; }
       .topbar { padding: 12px 20px; }
+      .topbar-links a:not(.topbar-cta) { display: none; }
+      .stats-grid { grid-template-columns: 1fr !important; }
+      .tab-btn { font-size: 11px; padding: 10px 8px; }
+      footer { flex-direction: column; gap: 10px; text-align: center; padding: 20px; }
+      .cta-section { padding: 50px 20px; }
+      .compare-grid > div { padding: 20px; }
     }
   </style>
 </head>
@@ -154,63 +176,92 @@
 
 <!-- Smart Resize -->
 <section>
-  <div class="section-eyebrow">Smart resize</div>
+  <div class="section-eyebrow">How it works</div>
   <h2 class="section-title">Your product always fills<br/><em>the canvas edge-to-edge</em></h2>
-  <p class="section-sub">Most tools either crop your product or leave it floating with ugly empty borders. PixelPrep scales your image to fill the canvas as much as possible while preserving the full aspect ratio — nothing ever gets cropped.</p>
+  <p class="section-sub">PixelPrep has two modes. Choose the one that fits your workflow.</p>
 
-  <div class="ba-grid">
-    <div class="ba-box">
-      <img src="/static/demo-product.jpg" alt="Original product image" style="aspect-ratio:4/3;object-fit:cover;"/>
-      <div class="ba-label"><strong>Before</strong> — Original 1024×768, white background</div>
+  <div class="tab-bar">
+    <button class="tab-btn active" onclick="showTab('resize')">📐 Resize Only</button>
+    <button class="tab-btn" onclick="showTab('removebg')">🤖 Remove Background</button>
+  </div>
+
+  <!-- Tab 1: Resize Only -->
+  <div class="tab-panel active" id="tab-resize">
+    <h3 style="font-family:'Instrument Serif',serif;font-size:28px;margin-bottom:8px;">White or transparent background<br/><em style="color:var(--accent);">resize &amp; fit</em></h3>
+    <p style="font-size:13px;color:var(--muted);line-height:1.8;margin-bottom:24px;">For product photos that already have a white or transparent background. Your product is centred and scaled to fill the canvas — no cropping, just clean, consistent sizing. Instant download.</p>
+
+    <div class="ba-grid">
+      <div class="ba-box">
+        <img src="/static/demo-product.jpg" alt="Original product image" style="aspect-ratio:4/3;object-fit:cover;"/>
+        <div class="ba-label"><strong>Before</strong> — Original 1024×768, white background</div>
+      </div>
+      <div class="ba-arrow">→</div>
+      <div class="ba-box after">
+        <img src="/static/demo-product.jpg" alt="Resized product image" style="aspect-ratio:1;object-fit:contain;width:100%;background:#ffffff;"/>
+        <div class="ba-label good"><strong>After</strong> — 800×800, centred, white fills remaining space</div>
+      </div>
     </div>
-    <div class="ba-arrow">→</div>
-    <div class="ba-box after" style="background:#1a3a6b;">
-      <img src="/static/demo-product-nobg.png" alt="Resized product image" style="aspect-ratio:1;object-fit:contain;width:100%;padding:5%;background:#1a3a6b;"/>
-      <div class="ba-label good" style="background:#1a3a6b;color:#7eb8d4;border-top-color:#2a4a6b;"><strong style="color:#fff;">After</strong> — 800×800, fills sides edge-to-edge, bg removed ✓</div>
+
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:18px 24px;font-size:13px;color:var(--muted);line-height:1.8;margin-top:8px;">
+      <strong style="color:var(--text);">The rule:</strong>
+      Portrait images (taller than wide) fill top &amp; bottom edges first.
+      Landscape images (wider than tall) fill left &amp; right edges first.
+      Either way, your product touches at least two edges — it never floats in the middle.
+      White fills the remaining space.
+    </div>
+
+    <div class="note-box">
+      <strong>⚠️ Important:</strong> This mode works best with <strong>white or transparent backgrounds</strong>. If your product photo has a coloured background (e.g. grey studio backdrop), the colour will be treated as part of the image — it won't be removed. Use the <strong>Remove Background</strong> mode instead for non-white backgrounds.
     </div>
   </div>
 
-  <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:18px 24px;font-size:13px;color:var(--muted);line-height:1.8;margin-top:8px;">
-    <strong style="color:var(--text);">The rule:</strong>
-    Portrait images (taller than wide) fill top & bottom edges first.
-    Landscape images (wider than tall) fill left & right edges first.
-    Either way, your product touches at least two edges — it never floats in the middle.
-    Your chosen background colour fills the remaining space.
-  </div>
-</section>
+  <!-- Tab 2: Remove Background -->
+  <div class="tab-panel" id="tab-removebg">
+    <h3 style="font-family:'Instrument Serif',serif;font-size:28px;margin-bottom:8px;">AI background removal<br/><em style="color:var(--accent);">any colour, instantly</em></h3>
+    <p style="font-size:13px;color:var(--muted);line-height:1.8;margin-bottom:24px;">Powered by BiRefNet AI. Remove any background and place your product on your chosen colour. Results are emailed to you as a zip file — you can close the page while we process. Requires a free account.</p>
 
-<hr class="divider"/>
+    <div class="ba-grid">
+      <div class="ba-box">
+        <img src="/static/demo-product.jpg" alt="Original product image" style="aspect-ratio:4/3;object-fit:cover;"/>
+        <div class="ba-label"><strong>Before</strong> — Original photo, any background</div>
+      </div>
+      <div class="ba-arrow">→</div>
+      <div class="ba-box after" style="background:#1a3a6b;">
+        <img src="/static/demo-product-nobg.png" alt="Background removed" style="aspect-ratio:1;object-fit:contain;width:100%;padding:5%;background:#1a3a6b;"/>
+        <div class="ba-label good" style="background:#1a3a6b;color:#7eb8d4;border-top-color:#2a4a6b;"><strong style="color:#fff;">After</strong> — 800×800, background removed, Navy</div>
+      </div>
+    </div>
 
-<!-- Background colours -->
-<section>
-  <div class="section-eyebrow">AI Background Removal</div>
-  <h2 class="section-title">Any colour background,<br/><em>instantly</em></h2>
-  <p class="section-sub">Powered by BiRefNet — one of the most accurate open-source AI background removal models available. Remove the original background and place your product on any of 24 preset colours or a custom colour of your choice.</p>
+    <div class="bg-grid" style="margin-top:32px;">
+      <div class="bg-card">
+        <div class="bg-card-img" style="background:#ffffff;">
+          <img src="/static/demo-product-nobg.png" alt="White background" style="object-fit:contain;width:100%;height:100%;padding:8%;"/>
+        </div>
+        <div class="bg-card-name">White</div>
+      </div>
+      <div class="bg-card">
+        <div class="bg-card-img" style="background:#1a3a6b;">
+          <img src="/static/demo-product-nobg.png" alt="Navy background" style="object-fit:contain;width:100%;height:100%;padding:8%;"/>
+        </div>
+        <div class="bg-card-name">Navy</div>
+      </div>
+      <div class="bg-card">
+        <div class="bg-card-img" style="background:#c84b2f;">
+          <img src="/static/demo-product-nobg.png" alt="Terracotta background" style="object-fit:contain;width:100%;height:100%;padding:8%;"/>
+        </div>
+        <div class="bg-card-name">Terracotta</div>
+      </div>
+      <div class="bg-card">
+        <div class="bg-card-img" style="background:#2d4a35;">
+          <img src="/static/demo-product-nobg.png" alt="Forest background" style="object-fit:contain;width:100%;height:100%;padding:8%;"/>
+        </div>
+        <div class="bg-card-name">Forest</div>
+      </div>
+    </div>
 
-  <div class="bg-grid">
-    <div class="bg-card">
-      <div class="bg-card-img" style="background:#ffffff;">
-        <img src="/static/demo-product-nobg.png" alt="White background" style="object-fit:contain;width:100%;height:100%;padding:8%;"/>
-      </div>
-      <div class="bg-card-name">White</div>
-    </div>
-    <div class="bg-card">
-      <div class="bg-card-img" style="background:#1a3a6b;">
-        <img src="/static/demo-product-nobg.png" alt="Navy background" style="object-fit:contain;width:100%;height:100%;padding:8%;"/>
-      </div>
-      <div class="bg-card-name">Navy</div>
-    </div>
-    <div class="bg-card">
-      <div class="bg-card-img" style="background:#c84b2f;">
-        <img src="/static/demo-product-nobg.png" alt="Terracotta background" style="object-fit:contain;width:100%;height:100%;padding:8%;"/>
-      </div>
-      <div class="bg-card-name">Terracotta</div>
-    </div>
-    <div class="bg-card">
-      <div class="bg-card-img" style="background:#2d4a35;">
-        <img src="/static/demo-product-nobg.png" alt="Forest background" style="object-fit:contain;width:100%;height:100%;padding:8%;"/>
-      </div>
-      <div class="bg-card-name">Forest</div>
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:18px 24px;font-size:13px;color:var(--muted);line-height:1.8;margin-top:24px;">
+      <strong style="color:var(--text);">📧 How it works:</strong>
+      Toggle "Remove background" on → choose your background colour → upload images → tap Process. Your images are processed on our server with BiRefNet AI and emailed to your account email as a zip file. You can close the page — no need to wait.
     </div>
   </div>
 </section>
@@ -317,7 +368,7 @@
   <h2 class="section-title">Smaller images =<br/><em>faster store = more sales</em></h2>
   <p class="section-sub">Page speed directly affects conversion rates. A 1-second delay in page load time can reduce conversions by up to 7%. PixelPrep produces the smallest possible JPEG at the best visual quality — so your product pages load fast on every connection.</p>
 
-  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:8px;">
+  <div class="stats-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:8px;">
     <div style="background:var(--surface);border:1.5px solid var(--border);border-radius:12px;padding:24px;">
       <div style="font-family:'Syne',sans-serif;font-size:32px;font-weight:800;color:var(--accent);margin-bottom:6px;">4:4:4</div>
       <div style="font-size:13px;font-weight:700;margin-bottom:6px;">Full chroma subsampling</div>
@@ -386,5 +437,13 @@
   </div>
 </footer>
 
+<script>
+function showTab(tab) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('tab-' + tab).classList.add('active');
+  event.target.classList.add('active');
+}
+</script>
 </body>
 </html>
