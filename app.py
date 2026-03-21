@@ -937,8 +937,8 @@ def process():
     except:
         target_w, target_h = 800, 800
 
-    bg_color = request.form.get("bg_color", "#ffffff")
     remove_bg = request.form.get("remove_bg", "false").lower() == "true"
+    bg_color = request.form.get("bg_color", "#ffffff") if remove_bg else "#ffffff"
     bg_model = "birefnet" if remove_bg else "none"
     try:
         fill_pct = max(10, min(100, int(request.form.get("fill_pct", 95)))) / 100.0

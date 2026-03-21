@@ -997,6 +997,14 @@
     removeBgToggle.classList.toggle('on', removeBg);
     document.getElementById('bgModelSection').style.display = removeBg ? 'block' : 'none';
     document.getElementById('bgColourSection').style.display = removeBg ? 'block' : 'none';
+    // Reset bg colour to white when Remove BG is turned off
+    if (!removeBg) {
+      bgColor = '#ffffff';
+      colourPicker.value = '#ffffff';
+      colourHex.value = '#ffffff';
+      document.querySelectorAll('.swatch').forEach(s => s.classList.remove('active'));
+      document.querySelector('.swatch[data-color="#ffffff"]').classList.add('active');
+    }
   });
 
   // Fill slider
