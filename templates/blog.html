@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Blog — PixelPrep</title>
+  <meta name="description" content="Product photography tips, e-commerce image guides, and marketplace listing advice from PixelPrep."/>
+  {% include "seo_head.html" %}
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Mono:wght@400;500&family=Syne:wght@700;800&display=swap" rel="stylesheet"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #f5f2ee; --surface: #fff; --surface2: #f0ece6;
+      --border: #e0d9cf; --text: #1a1714; --muted: #8c8278;
+      --accent: #c84b2f; --success: #2a7a4b;
+    }
+    body { background: var(--bg); color: var(--text); font-family: 'DM Mono', monospace; }
+    .topbar { background: var(--text); color: #f5f2ee; padding: 14px 40px; display: flex; align-items: center; justify-content: space-between; }
+    .logo { font-family: 'Syne', sans-serif; font-size: 20px; font-weight: 800; text-decoration: none; color: #f5f2ee; }
+    .logo span { color: var(--accent); }
+    .topbar-links { display: flex; gap: 20px; align-items: center; }
+    .topbar-links a { font-size: 12px; color: #8c8278; text-decoration: none; letter-spacing: 0.05em; }
+    .topbar-links a:hover { color: #f5f2ee; }
+    .topbar-cta { background: var(--accent); color: #fff !important; padding: 8px 18px; border-radius: 6px; font-family: 'Syne', sans-serif; font-weight: 700; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; }
+
+    .hero { padding: 80px 40px 60px; max-width: 800px; margin: 0 auto; text-align: center; }
+    .hero-eyebrow { font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--accent); margin-bottom: 16px; }
+    .hero h1 { font-family: 'Instrument Serif', serif; font-size: clamp(36px, 5vw, 56px); line-height: 1.1; margin-bottom: 16px; }
+    .hero h1 em { font-style: italic; color: var(--accent); }
+    .hero p { font-size: 15px; color: var(--muted); line-height: 1.8; max-width: 550px; margin: 0 auto; }
+
+    .posts { max-width: 800px; margin: 0 auto; padding: 0 40px 80px; display: flex; flex-direction: column; gap: 24px; }
+    .post-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 32px; text-decoration: none; color: var(--text); transition: border-color 0.15s, box-shadow 0.15s; }
+    .post-card:hover { border-color: var(--accent); box-shadow: 0 4px 20px rgba(0,0,0,0.05); }
+    .post-date { font-size: 11px; color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 12px; }
+    .post-title { font-family: 'Instrument Serif', serif; font-size: 26px; line-height: 1.3; margin-bottom: 10px; }
+    .post-excerpt { font-size: 13px; color: var(--muted); line-height: 1.8; }
+    .read-more { display: inline-block; margin-top: 14px; font-size: 12px; color: var(--accent); font-weight: 500; letter-spacing: 0.05em; }
+
+    .empty-state { text-align: center; padding: 60px 40px; color: var(--muted); font-size: 14px; }
+
+    footer { background: var(--surface); border-top: 1px solid var(--border); padding: 20px 40px; display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: var(--muted); }
+    footer a { color: var(--muted); text-decoration: none; margin-left: 16px; }
+    footer a:hover { color: var(--text); }
+
+    @media (max-width: 768px) {
+      .hero { padding: 50px 20px 40px; }
+      .posts { padding: 0 20px 60px; }
+      .post-card { padding: 24px; }
+      .post-title { font-size: 22px; }
+      .topbar { padding: 12px 20px; }
+      .topbar-links a:not(.topbar-cta) { display: none; }
+      footer { flex-direction: column; gap: 10px; text-align: center; padding: 20px; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="topbar">
+  <a class="logo" href="/">Pixel<span>Prep</span></a>
+  <div class="topbar-links">
+    <a href="/how-it-works">How it works</a>
+    <a href="/pricing">Pricing</a>
+    <a href="/blog">Blog</a>
+    <a href="/" class="topbar-cta">Try free</a>
+  </div>
+</div>
+
+<div class="hero">
+  <div class="hero-eyebrow">Blog</div>
+  <h1>Product image tips<br/><em>&amp; guides</em></h1>
+  <p>Practical advice for e-commerce sellers — image sizes, photography tips, and marketplace listing guides.</p>
+</div>
+
+<div class="posts">
+  {% if posts %}
+    {% for post in posts %}
+    <a class="post-card" href="/blog/{{ post.slug }}">
+      <div class="post-date">{{ post.created_at.strftime('%d %b %Y') }}</div>
+      <div class="post-title">{{ post.title }}</div>
+      <div class="post-excerpt">{{ post.meta_description }}</div>
+      <span class="read-more">Read more &rarr;</span>
+    </a>
+    {% endfor %}
+  {% else %}
+    <div class="empty-state">No posts yet — check back soon.</div>
+  {% endif %}
+</div>
+
+<footer>
+  <span>&copy; 2026 Inlinex Private Limited &middot; PixelPrep</span>
+  <div>
+    <a href="/how-it-works">How it works</a>
+    <a href="/pricing">Pricing</a>
+    <a href="/blog">Blog</a>
+    <a href="/terms">Terms</a>
+    <a href="/privacy">Privacy</a>
+  </div>
+</footer>
+
+</body>
+</html>

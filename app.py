@@ -85,6 +85,16 @@ def init_db():
                     last_seen TIMESTAMPTZ DEFAULT NOW()
                 );
                 CREATE UNIQUE INDEX IF NOT EXISTS anon_usage_ip_idx ON anon_usage(ip);
+                CREATE TABLE IF NOT EXISTS blog_posts (
+                    id SERIAL PRIMARY KEY,
+                    slug TEXT UNIQUE NOT NULL,
+                    title TEXT NOT NULL,
+                    meta_description TEXT,
+                    content TEXT NOT NULL,
+                    published BOOLEAN DEFAULT TRUE,
+                    created_at TIMESTAMPTZ DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ DEFAULT NOW()
+                );
                 CREATE TABLE IF NOT EXISTS users (
                     id SERIAL PRIMARY KEY,
                     username TEXT UNIQUE NOT NULL,
@@ -656,6 +666,24 @@ def privacy():
 @app.route("/pricing")
 def pricing_page():
     return render_template("pricing.html")
+
+@app.route("/blog")
+def blog_list():
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT slug, title, meta_description, created_at FROM blog_posts WHERE published = TRUE ORDER BY created_at DESC")
+            posts = cur.fetchall()
+    return render_template("blog.html", posts=posts)
+
+@app.route("/blog/<slug>")
+def blog_post(slug):
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT * FROM blog_posts WHERE slug = %s AND published = TRUE", (slug,))
+            post = cur.fetchone()
+    if not post:
+        return "Post not found", 404
+    return render_template("blog_post.html", post=post)
 
 @app.route("/subscribe")
 @login_required
