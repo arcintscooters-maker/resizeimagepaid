@@ -340,21 +340,47 @@ def downscale_for_rembg(img, max_dim=REMBG_MAX_DIM):
     new_w, new_h = int(w * scale), int(h * scale)
     return img.resize((new_w, new_h), Image.LANCZOS), scale
 
-def clean_near_white_background(img_rgb, threshold=50):
-    """Convert near-white pixels to pure white. Detects off-white backgrounds
-    by sampling corner pixels, then replaces any pixel within threshold of
-    pure white to (255,255,255). Prevents visible borders on off-white photos."""
+def clean_near_white_background(img_rgb, threshold=40):
+    """Convert near-white background pixels to pure white using flood fill
+    from edges. Only cleans pixels connected to the border — never touches
+    light-coloured pixels inside the product itself."""
     arr = np.array(img_rgb)
     h, w = arr.shape[:2]
-    # Sample 4 corners (10x10 pixel blocks)
+    # Sample 4 corners (10x10 pixel blocks) to detect if background is near-white
     corners = [arr[0:10, 0:10], arr[0:10, w-10:w], arr[h-10:h, 0:10], arr[h-10:h, w-10:w]]
     for corner in corners:
         mean = corner.mean(axis=(0, 1))
-        if mean[0] < 180 or mean[1] < 180 or mean[2] < 180:
+        if mean[0] < 200 or mean[1] < 200 or mean[2] < 200:
             return img_rgb  # Not a near-white background
-    # Replace near-white pixels with pure white
-    mask = (arr[:,:,0] > 255 - threshold) & (arr[:,:,1] > 255 - threshold) & (arr[:,:,2] > 255 - threshold)
-    arr[mask] = [255, 255, 255]
+    # Flood fill from edges: only replace near-white pixels connected to border
+    near_white = (arr[:,:,0] > 255 - threshold) & (arr[:,:,1] > 255 - threshold) & (arr[:,:,2] > 255 - threshold)
+    visited = np.zeros((h, w), dtype=bool)
+    queue = deque()
+    # Seed from all border pixels that are near-white
+    for x in range(w):
+        if near_white[0, x] and not visited[0, x]:
+            visited[0, x] = True
+            queue.append((0, x))
+        if near_white[h-1, x] and not visited[h-1, x]:
+            visited[h-1, x] = True
+            queue.append((h-1, x))
+    for y in range(h):
+        if near_white[y, 0] and not visited[y, 0]:
+            visited[y, 0] = True
+            queue.append((y, 0))
+        if near_white[y, w-1] and not visited[y, w-1]:
+            visited[y, w-1] = True
+            queue.append((y, w-1))
+    # BFS flood fill
+    while queue:
+        cy, cx = queue.popleft()
+        for dy, dx in [(-1,0),(1,0),(0,-1),(0,1)]:
+            ny, nx = cy+dy, cx+dx
+            if 0 <= ny < h and 0 <= nx < w and not visited[ny, nx] and near_white[ny, nx]:
+                visited[ny, nx] = True
+                queue.append((ny, nx))
+    # Only replace background pixels (connected to edges)
+    arr[visited] = [255, 255, 255]
     return Image.fromarray(arr)
 
 def process_image(img_bytes, target_w, target_h, bg_color_hex, remove_bg, fill_pct=0.95, bg_model='birefnet'):
