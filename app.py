@@ -340,6 +340,23 @@ def downscale_for_rembg(img, max_dim=REMBG_MAX_DIM):
     new_w, new_h = int(w * scale), int(h * scale)
     return img.resize((new_w, new_h), Image.LANCZOS), scale
 
+def clean_near_white_background(img_rgb, threshold=30):
+    """Convert near-white pixels to pure white. Detects off-white backgrounds
+    by sampling corner pixels, then replaces any pixel within threshold of
+    pure white to (255,255,255). Prevents visible borders on off-white photos."""
+    arr = np.array(img_rgb)
+    h, w = arr.shape[:2]
+    # Sample 4 corners (10x10 pixel blocks)
+    corners = [arr[0:10, 0:10], arr[0:10, w-10:w], arr[h-10:h, 0:10], arr[h-10:h, w-10:w]]
+    for corner in corners:
+        mean = corner.mean(axis=(0, 1))
+        if mean[0] < 200 or mean[1] < 200 or mean[2] < 200:
+            return img_rgb  # Not a near-white background
+    # Replace near-white pixels with pure white
+    mask = (arr[:,:,0] > 255 - threshold) & (arr[:,:,1] > 255 - threshold) & (arr[:,:,2] > 255 - threshold)
+    arr[mask] = [255, 255, 255]
+    return Image.fromarray(arr)
+
 def process_image(img_bytes, target_w, target_h, bg_color_hex, remove_bg, fill_pct=0.95, bg_model='birefnet'):
     bg_rgb = hex_to_rgb(bg_color_hex)
     img = Image.open(io.BytesIO(img_bytes)).convert("RGBA")
@@ -375,6 +392,7 @@ def process_image(img_bytes, target_w, target_h, bg_color_hex, remove_bg, fill_p
             img_rgb = white_bg.convert("RGB")
         else:
             img_rgb = img.convert("RGB")
+        img_rgb = clean_near_white_background(img_rgb)
         img_rgb = autocrop_white(img_rgb)
     canvas = fit_and_place(img_rgb, target_w, target_h, bg_rgb, fill_pct)
     return save_optimised(canvas)
