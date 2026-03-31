@@ -13,6 +13,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Set ONNX threads for optimal CPU inference
 ENV ONNXRUNTIME_NUM_THREADS=4
 ENV OMP_NUM_THREADS=4
+ENV PYTHONUNBUFFERED=1
 
 # Pre-download models at build time so first request is fast
 RUN python -c "from rembg import remove, new_session; from PIL import Image; s=new_session('birefnet-general-lite'); remove(Image.new('RGB',(10,10)), session=s); print('BiRefNet-lite ready')" || true

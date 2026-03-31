@@ -1048,7 +1048,6 @@ def process():
             # Launch background thread
             t = threading.Thread(target=process_and_email,
                                  args=(file_data, target_w, target_h, bg_color, fill_pct, bg_model, user_email))
-            t.daemon = True
             t.start()
             return jsonify({"status": "emailing", "email": user_email, "count": image_count}), 202
 
