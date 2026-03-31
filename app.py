@@ -340,7 +340,7 @@ def downscale_for_rembg(img, max_dim=REMBG_MAX_DIM):
     new_w, new_h = int(w * scale), int(h * scale)
     return img.resize((new_w, new_h), Image.LANCZOS), scale
 
-def clean_near_white_background(img_rgb, threshold=30):
+def clean_near_white_background(img_rgb, threshold=50):
     """Convert near-white pixels to pure white. Detects off-white backgrounds
     by sampling corner pixels, then replaces any pixel within threshold of
     pure white to (255,255,255). Prevents visible borders on off-white photos."""
@@ -350,7 +350,7 @@ def clean_near_white_background(img_rgb, threshold=30):
     corners = [arr[0:10, 0:10], arr[0:10, w-10:w], arr[h-10:h, 0:10], arr[h-10:h, w-10:w]]
     for corner in corners:
         mean = corner.mean(axis=(0, 1))
-        if mean[0] < 200 or mean[1] < 200 or mean[2] < 200:
+        if mean[0] < 180 or mean[1] < 180 or mean[2] < 180:
             return img_rgb  # Not a near-white background
     # Replace near-white pixels with pure white
     mask = (arr[:,:,0] > 255 - threshold) & (arr[:,:,1] > 255 - threshold) & (arr[:,:,2] > 255 - threshold)
