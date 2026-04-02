@@ -743,6 +743,18 @@
       <div class="fill-hint">How much of the canvas the product fills. 100% stretches the product edge-to-edge. Lower % adds more white-space padding around it.</div>
     </div>
 
+    <!-- Clean BG toggle — only shown when Remove BG is OFF -->
+    <div id="cleanBgSection">
+      <div class="section-label">Background Cleanup</div>
+      <div class="toggle-row on" id="cleanBgToggle">
+        <div class="toggle-info">
+          <div class="toggle-name">Clean background</div>
+          <div class="toggle-desc">Converts near-white backgrounds to pure white. Turn off for white or light-coloured products.</div>
+        </div>
+        <div class="toggle-switch"></div>
+      </div>
+    </div>
+
     <!-- Background colour — only shown when remove bg is ON -->
     <div id="bgColourSection" style="display:none;">
       <div class="section-label">Background Colour</div>
@@ -907,6 +919,7 @@
   let bgColor = '#ffffff';
   let fillPct = 95;
   let removeBg = false;
+  let cleanBg = true;
   let bgModel = 'birefnet'; // always birefnet, emailed async
   const isLoggedIn = {{ 'true' if user else 'false' }};
 
@@ -929,6 +942,7 @@
   const colourPicker = document.getElementById('colourPicker');
   const colourHex = document.getElementById('colourHex');
   const removeBgToggle = document.getElementById('removeBgToggle');
+  const cleanBgToggle = document.getElementById('cleanBgToggle');
   const customW = document.getElementById('customW');
   const customH = document.getElementById('customH');
   const fillSlider = document.getElementById('fillSlider');
@@ -998,6 +1012,7 @@
     removeBgToggle.classList.toggle('on', removeBg);
     document.getElementById('bgModelSection').style.display = removeBg ? 'block' : 'none';
     document.getElementById('bgColourSection').style.display = removeBg ? 'block' : 'none';
+    document.getElementById('cleanBgSection').style.display = removeBg ? 'none' : 'block';
     // Reset bg colour to white when Remove BG is turned off
     if (!removeBg) {
       bgColor = '#ffffff';
@@ -1006,6 +1021,12 @@
       document.querySelectorAll('.swatch').forEach(s => s.classList.remove('active'));
       document.querySelector('.swatch[data-color="#ffffff"]').classList.add('active');
     }
+  });
+
+  // Clean BG toggle
+  cleanBgToggle.addEventListener('click', () => {
+    cleanBg = !cleanBg;
+    cleanBgToggle.classList.toggle('on', cleanBg);
   });
 
   // Fill slider
@@ -1138,6 +1159,7 @@
     formData.append('bg_color', bgColor);
     formData.append('fill_pct', fillPct);
     formData.append('remove_bg', removeBg ? 'true' : 'false');
+    formData.append('clean_bg', cleanBg ? 'true' : 'false');
 
     const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
@@ -1154,6 +1176,7 @@
           singleForm.append('bg_color', bgColor);
           singleForm.append('fill_pct', fillPct);
           singleForm.append('remove_bg', 'false');
+          singleForm.append('clean_bg', cleanBg ? 'true' : 'false');
           const res = await fetch('/process', { method: 'POST', body: singleForm });
           if (!res.ok) {
             let err = 'Server error';

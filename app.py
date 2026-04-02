@@ -398,7 +398,7 @@ def clean_near_white_background(img_rgb, threshold=30):
     arr[visited] = [255, 255, 255]
     return Image.fromarray(arr)
 
-def process_image(img_bytes, target_w, target_h, bg_color_hex, remove_bg, fill_pct=0.95, bg_model='birefnet'):
+def process_image(img_bytes, target_w, target_h, bg_color_hex, remove_bg, fill_pct=0.95, bg_model='birefnet', clean_bg=True):
     bg_rgb = hex_to_rgb(bg_color_hex)
     img = Image.open(io.BytesIO(img_bytes)).convert("RGBA")
     if remove_bg:
@@ -433,7 +433,8 @@ def process_image(img_bytes, target_w, target_h, bg_color_hex, remove_bg, fill_p
             img_rgb = white_bg.convert("RGB")
         else:
             img_rgb = img.convert("RGB")
-        img_rgb = clean_near_white_background(img_rgb)
+        if clean_bg:
+            img_rgb = clean_near_white_background(img_rgb)
         img_rgb = autocrop_white(img_rgb)
     canvas = fit_and_place(img_rgb, target_w, target_h, bg_rgb, fill_pct)
     return save_optimised(canvas)
@@ -1025,6 +1026,7 @@ def process():
         target_w, target_h = 800, 800
 
     remove_bg = request.form.get("remove_bg", "false").lower() == "true"
+    clean_bg = request.form.get("clean_bg", "true").lower() == "true"
     bg_color = request.form.get("bg_color", "#ffffff") if remove_bg else "#ffffff"
     bg_model = "birefnet" if remove_bg else "none"
     try:
@@ -1068,7 +1070,7 @@ def process():
 
     def _process(args):
         data, name = args
-        return name, process_image(data, target_w, target_h, bg_color, remove_bg, fill_pct, bg_model)
+        return name, process_image(data, target_w, target_h, bg_color, remove_bg, fill_pct, bg_model, clean_bg)
 
     if image_count == 1:
         name, result = _process(file_data[0])
