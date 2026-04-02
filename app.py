@@ -340,10 +340,10 @@ def downscale_for_rembg(img, max_dim=REMBG_MAX_DIM):
     new_w, new_h = int(w * scale), int(h * scale)
     return img.resize((new_w, new_h), Image.LANCZOS), scale
 
-def clean_near_white_background(img_rgb, threshold=40):
+def clean_near_white_background(img_rgb, threshold=30):
     """Convert near-white background pixels to pure white using flood fill
-    from edges. Only cleans pixels connected to the border — never touches
-    light-coloured pixels inside the product itself."""
+    from edges. Uses edge detection as a barrier so the fill stops at product
+    boundaries — even when the product itself is white."""
     arr = np.array(img_rgb)
     h, w = arr.shape[:2]
     # Sample 4 corners (10x10 pixel blocks) to detect if background is near-white
@@ -352,8 +352,23 @@ def clean_near_white_background(img_rgb, threshold=40):
         mean = corner.mean(axis=(0, 1))
         if mean[0] < 200 or mean[1] < 200 or mean[2] < 200:
             return img_rgb  # Not a near-white background
-    # Flood fill from edges: only replace near-white pixels connected to border
-    near_white = (arr[:,:,0] > 255 - threshold) & (arr[:,:,1] > 255 - threshold) & (arr[:,:,2] > 255 - threshold)
+    # Build edge barrier using Sobel gradient magnitude
+    gray = np.mean(arr, axis=2)
+    # Sobel kernels (3x3)
+    gy = np.zeros_like(gray)
+    gx = np.zeros_like(gray)
+    gy[1:-1, :] = gray[2:, :] - gray[:-2, :]
+    gx[:, 1:-1] = gray[:, 2:] - gray[:, :-2]
+    gradient = np.sqrt(gx**2 + gy**2)
+    # Pixels on a strong edge are barriers — flood fill won't cross them
+    edge_barrier = gradient > 15
+    # Near-white and not on an edge
+    near_white = (
+        (arr[:,:,0] > 255 - threshold) &
+        (arr[:,:,1] > 255 - threshold) &
+        (arr[:,:,2] > 255 - threshold) &
+        ~edge_barrier
+    )
     visited = np.zeros((h, w), dtype=bool)
     queue = deque()
     # Seed from all border pixels that are near-white
@@ -371,7 +386,7 @@ def clean_near_white_background(img_rgb, threshold=40):
         if near_white[y, w-1] and not visited[y, w-1]:
             visited[y, w-1] = True
             queue.append((y, w-1))
-    # BFS flood fill
+    # BFS flood fill — stops at edges and non-white pixels
     while queue:
         cy, cx = queue.popleft()
         for dy, dx in [(-1,0),(1,0),(0,-1),(0,1)]:
