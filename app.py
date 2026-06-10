@@ -14,7 +14,8 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
 from email import encoders
 from flask import (Flask, request, send_file, render_template,
-                   jsonify, session, redirect, url_for, make_response)
+                   jsonify, session, redirect, url_for, make_response,
+                   send_from_directory)
 from PIL import Image
 import io
 import zipfile
@@ -440,6 +441,10 @@ def process_image(img_bytes, target_w, target_h, bg_color_hex, remove_bg, fill_p
     return save_optimised(canvas)
 
 # ── Routes ────────────────────────────────────────────────────────────────────
+
+@app.route("/favicon.ico")
+def favicon_root():
+    return send_from_directory(app.static_folder, "favicon.ico", mimetype="image/x-icon")
 
 @app.route("/")
 def index():
