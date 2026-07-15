@@ -1,5 +1,7 @@
 import os
 import gc
+import ctypes
+import ctypes.util
 import secrets
 import json
 from datetime import datetime, timedelta, timezone
@@ -39,6 +41,26 @@ GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD")
 
 QUALITY = 85
 SUBSAMPLING = 0
+
+# One BiRefNet inference transiently needs several GB. Serialize heavy inference
+# so concurrent requests can't stack multi-GB peaks (the old path to 20-25 GB).
+_REMBG_LOCK = threading.Semaphore(1)
+
+# Force glibc to return freed memory to the OS after heavy work. Without this,
+# RSS stays pinned at the high-water mark even after Python/onnx free the buffers.
+_LIBC = None
+try:
+    _LIBC = ctypes.CDLL(ctypes.util.find_library("c") or "libc.so.6", use_errno=True)
+except Exception:
+    _LIBC = None
+
+def _release_memory():
+    gc.collect()
+    if _LIBC is not None:
+        try:
+            _LIBC.malloc_trim(0)
+        except Exception:
+            pass
 
 # Load rembg session once at startup — BiRefNet only (emailed async)
 REMBG_SESSION = None
@@ -428,49 +450,59 @@ def clean_near_white_background(img_rgb, threshold=30):
     return Image.fromarray(arr)
 
 def process_image(img_bytes, target_w, target_h, bg_color_hex, remove_bg, fill_pct=0.95, bg_model='birefnet', clean_bg=True):
-    bg_rgb = hex_to_rgb(bg_color_hex)
-    img = Image.open(io.BytesIO(img_bytes)).convert("RGBA")
+    # Hold the lock only around the memory-heavy background-removal path so two
+    # inferences can't run at once; light resizes stay fully concurrent.
     if remove_bg:
-        try:
-            from rembg import remove
-            session_rembg = get_rembg_session()
-            if session_rembg:
-                # Downscale for faster inference, then upscale mask
-                small_img, scale = downscale_for_rembg(img)
-                small_result = remove(small_img, session=session_rembg)
-                if scale < 1.0:
-                    # Extract alpha from small result, upscale it, apply to original
-                    small_alpha = small_result.split()[3]
-                    full_alpha = small_alpha.resize(img.size, Image.LANCZOS)
-                    img.putalpha(full_alpha)
-                else:
-                    img = small_result
-        except Exception as e:
-            print(f"rembg failed: {e}")
-        arr = np.array(img)
-        arr = fill_interior_transparent(arr, bg_rgb)
-        img = Image.fromarray(arr, 'RGBA')
-        img = autocrop_transparent(img)
-        bg_layer = Image.new("RGBA", img.size, bg_rgb + (255,))
-        bg_layer.paste(img, mask=img.split()[3])
-        img_rgb = bg_layer.convert("RGB")
-    else:
-        # Handle transparent PNGs — composite onto white before converting
-        if img.mode == 'RGBA' and img.split()[3].getextrema()[0] < 255:
-            white_bg = Image.new("RGBA", img.size, (255, 255, 255, 255))
-            white_bg.paste(img, mask=img.split()[3])
-            img_rgb = white_bg.convert("RGB")
+        _REMBG_LOCK.acquire()
+    try:
+        bg_rgb = hex_to_rgb(bg_color_hex)
+        img = Image.open(io.BytesIO(img_bytes)).convert("RGBA")
+        if remove_bg:
+            try:
+                from rembg import remove
+                session_rembg = get_rembg_session()
+                if session_rembg:
+                    # Downscale for faster inference, then upscale mask
+                    small_img, scale = downscale_for_rembg(img)
+                    small_result = remove(small_img, session=session_rembg)
+                    if scale < 1.0:
+                        # Extract alpha from small result, upscale it, apply to original
+                        small_alpha = small_result.split()[3]
+                        full_alpha = small_alpha.resize(img.size, Image.LANCZOS)
+                        img.putalpha(full_alpha)
+                    else:
+                        img = small_result
+            except Exception as e:
+                print(f"rembg failed: {e}")
+            arr = np.array(img)
+            arr = fill_interior_transparent(arr, bg_rgb)
+            img = Image.fromarray(arr, 'RGBA')
+            img = autocrop_transparent(img)
+            bg_layer = Image.new("RGBA", img.size, bg_rgb + (255,))
+            bg_layer.paste(img, mask=img.split()[3])
+            img_rgb = bg_layer.convert("RGB")
         else:
-            img_rgb = img.convert("RGB")
-        if clean_bg:
-            img_rgb = clean_near_white_background(img_rgb)
-        img_rgb = autocrop_white(img_rgb)
-    canvas = fit_and_place(img_rgb, target_w, target_h, bg_rgb, fill_pct)
-    out = save_optimised(canvas)
-    # Drop large intermediates and reclaim promptly (heavy numpy/PIL buffers)
-    img = img_rgb = canvas = None
-    gc.collect()
-    return out
+            # Handle transparent PNGs — composite onto white before converting
+            if img.mode == 'RGBA' and img.split()[3].getextrema()[0] < 255:
+                white_bg = Image.new("RGBA", img.size, (255, 255, 255, 255))
+                white_bg.paste(img, mask=img.split()[3])
+                img_rgb = white_bg.convert("RGB")
+            else:
+                img_rgb = img.convert("RGB")
+            if clean_bg:
+                img_rgb = clean_near_white_background(img_rgb)
+            img_rgb = autocrop_white(img_rgb)
+        canvas = fit_and_place(img_rgb, target_w, target_h, bg_rgb, fill_pct)
+        out = save_optimised(canvas)
+        # Drop large intermediates so the release below can reclaim them
+        img = img_rgb = canvas = None
+        return out
+    finally:
+        # Free Python objects AND return the freed heap to the OS, so RSS drops
+        # back to baseline instead of staying pinned at the inference peak.
+        if remove_bg:
+            _release_memory()
+            _REMBG_LOCK.release()
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
