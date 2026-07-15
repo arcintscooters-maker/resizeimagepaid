@@ -1,5 +1,6 @@
 import os
 import gc
+import time
 import ctypes
 import ctypes.util
 import secrets
@@ -62,6 +63,40 @@ def _release_memory():
         except Exception:
             pass
 
+# The BiRefNet onnx session holds several GB once loaded and does NOT release it
+# between requests. This tool is used in rare bursts with long idle gaps, so a
+# loaded session would otherwise stay pinned at ~7 GB for weeks. Drop it after a
+# few idle minutes so RAM returns to the ~0.15 GB baseline; it reloads (~1-2 s
+# from the pre-downloaded model) on the next background-removal request.
+_LAST_REMBG_USE = [0.0]
+_IDLE_DROP_SECONDS = 300
+_REAPER_STARTED = [False]
+
+def _drop_rembg_session():
+    global REMBG_SESSION
+    # Acquire the same lock inference uses so we never free a session mid-run.
+    with _REMBG_LOCK:
+        if REMBG_SESSION is not None:
+            REMBG_SESSION = None
+            _release_memory()
+            print("rembg session dropped after idle — memory released")
+
+def _idle_reaper():
+    while True:
+        time.sleep(60)
+        try:
+            if REMBG_SESSION is not None and (time.time() - _LAST_REMBG_USE[0]) > _IDLE_DROP_SECONDS:
+                _drop_rembg_session()
+        except Exception:
+            pass
+
+def _ensure_reaper():
+    # Started lazily from the request path so it runs inside the gunicorn worker
+    # (a thread started at import time would not survive the --preload fork).
+    if not _REAPER_STARTED[0]:
+        _REAPER_STARTED[0] = True
+        threading.Thread(target=_idle_reaper, daemon=True).start()
+
 # Load rembg session once at startup — BiRefNet only (emailed async)
 REMBG_SESSION = None
 BG_LIMITS = {"birefnet": 10, "none": 20}
@@ -103,6 +138,8 @@ def get_rembg_session():
                 print("BiRefNet-lite session loaded (default opts)")
             except Exception as e:
                 print(f"BiRefNet-lite session failed: {e}")
+    if REMBG_SESSION is not None:
+        _ensure_reaper()
     return REMBG_SESSION
 TRIAL_DAYS = 7
 ANON_FREE_IMAGES = 20
@@ -454,6 +491,7 @@ def process_image(img_bytes, target_w, target_h, bg_color_hex, remove_bg, fill_p
     # inferences can't run at once; light resizes stay fully concurrent.
     if remove_bg:
         _REMBG_LOCK.acquire()
+        _LAST_REMBG_USE[0] = time.time()  # keep the idle reaper from dropping mid-use
     try:
         bg_rgb = hex_to_rgb(bg_color_hex)
         img = Image.open(io.BytesIO(img_bytes)).convert("RGBA")
@@ -498,9 +536,10 @@ def process_image(img_bytes, target_w, target_h, bg_color_hex, remove_bg, fill_p
         img = img_rgb = canvas = None
         return out
     finally:
-        # Free Python objects AND return the freed heap to the OS, so RSS drops
-        # back to baseline instead of staying pinned at the inference peak.
+        # Free Python objects AND return the freed heap to the OS. The onnx
+        # session still holds its buffers; the idle reaper drops it later.
         if remove_bg:
+            _LAST_REMBG_USE[0] = time.time()  # reset idle timer to end-of-use
             _release_memory()
             _REMBG_LOCK.release()
 
