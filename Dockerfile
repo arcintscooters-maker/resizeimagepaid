@@ -22,4 +22,7 @@ COPY . .
 
 EXPOSE 8080
 
-CMD gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --threads 4 --timeout 300 --preload
+# --max-requests recycles each worker after N requests, returning all native
+# (onnxruntime/rembg) memory to the OS — caps the slow climb to 20-25 GB.
+# threads 4->2 halves peak concurrent inference memory (ONNX already uses OMP_NUM_THREADS internally).
+CMD gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --threads 2 --timeout 300 --max-requests 50 --max-requests-jitter 15 --preload

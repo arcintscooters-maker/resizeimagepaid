@@ -1,4 +1,5 @@
 import os
+import gc
 import secrets
 import json
 from datetime import datetime, timedelta, timezone
@@ -44,15 +45,42 @@ REMBG_SESSION = None
 BG_LIMITS = {"birefnet": 10, "none": 20}
 REMBG_MAX_DIM = 1024  # Full resolution for best quality — async so speed doesn't matter
 
+def _rembg_sess_opts():
+    # Disable the onnxruntime CPU memory arena so native memory is released
+    # after each inference instead of being hoarded to the high-water mark
+    # (the root cause of the slow climb to 20-25 GB). Costs a little speed.
+    try:
+        import onnxruntime as ort
+        so = ort.SessionOptions()
+        so.enable_cpu_mem_arena = False
+        so.enable_mem_pattern = False
+        return so
+    except Exception:
+        return None
+
 def get_rembg_session():
     global REMBG_SESSION
     if REMBG_SESSION is None:
-        try:
-            from rembg import new_session
-            REMBG_SESSION = new_session("birefnet-general-lite")
-            print("BiRefNet-lite session loaded")
-        except Exception as e:
-            print(f"BiRefNet-lite session failed: {e}")
+        from rembg import new_session
+        so = _rembg_sess_opts()
+        # rembg forwards session options under different kwarg names across
+        # versions; try each, then fall back to a plain session.
+        for kw in ("sess_opts", "sess_options"):
+            try:
+                REMBG_SESSION = new_session("birefnet-general-lite", **({kw: so} if so else {}))
+                print(f"BiRefNet-lite session loaded (arena disabled via {kw})")
+                break
+            except TypeError:
+                continue
+            except Exception as e:
+                print(f"BiRefNet-lite session failed: {e}")
+                break
+        if REMBG_SESSION is None:
+            try:
+                REMBG_SESSION = new_session("birefnet-general-lite")
+                print("BiRefNet-lite session loaded (default opts)")
+            except Exception as e:
+                print(f"BiRefNet-lite session failed: {e}")
     return REMBG_SESSION
 TRIAL_DAYS = 7
 ANON_FREE_IMAGES = 20
@@ -438,7 +466,11 @@ def process_image(img_bytes, target_w, target_h, bg_color_hex, remove_bg, fill_p
             img_rgb = clean_near_white_background(img_rgb)
         img_rgb = autocrop_white(img_rgb)
     canvas = fit_and_place(img_rgb, target_w, target_h, bg_rgb, fill_pct)
-    return save_optimised(canvas)
+    out = save_optimised(canvas)
+    # Drop large intermediates and reclaim promptly (heavy numpy/PIL buffers)
+    img = img_rgb = canvas = None
+    gc.collect()
+    return out
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
