@@ -100,6 +100,7 @@
             <th>Status</th>
             <th>Trial Images</th>
             <th>Paid (this cycle)</th>
+            <th>Last 30 days</th>
             <th>Trial Ends</th>
             <th>Sub Ends</th>
             <th>Joined</th>
@@ -130,6 +131,22 @@
                 <strong>{{ u.paid_images_used or 0 }}</strong>
                 {% if u.paid_period_reset_at %}
                   <div class="muted" style="font-size:11px;">since {{ u.paid_period_reset_at.strftime('%d %b') }}</div>
+                {% endif %}
+              {% else %}
+                <span class="muted">—</span>
+              {% endif %}
+            </td>
+            <td>
+              {% set r = u.resize_count_30d or 0 %}
+              {% set b = u.bg_removal_count_30d or 0 %}
+              {% if r or b %}
+                <div style="font-size:12px;">
+                  <span style="color:#2a7a4b;">{{ r }} resize</span>
+                  <span class="muted"> / </span>
+                  <span style="color:#c84b2f;">{{ b }} bg</span>
+                </div>
+                {% if u.last_used %}
+                  <div class="muted" style="font-size:11px;">last {{ u.last_used.strftime('%d %b %H:%M') }}</div>
                 {% endif %}
               {% else %}
                 <span class="muted">—</span>

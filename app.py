@@ -175,6 +175,16 @@ def init_db():
                     last_seen TIMESTAMPTZ DEFAULT NOW()
                 );
                 CREATE UNIQUE INDEX IF NOT EXISTS anon_usage_ip_idx ON anon_usage(ip);
+                CREATE TABLE IF NOT EXISTS usage_events (
+                    id BIGSERIAL PRIMARY KEY,
+                    user_id INTEGER NOT NULL,
+                    ts TIMESTAMPTZ DEFAULT NOW(),
+                    image_count INTEGER NOT NULL,
+                    bg_model TEXT NOT NULL,
+                    canvas_w INTEGER,
+                    canvas_h INTEGER
+                );
+                CREATE INDEX IF NOT EXISTS usage_events_user_ts_idx ON usage_events(user_id, ts DESC);
                 CREATE TABLE IF NOT EXISTS blog_posts (
                     id SERIAL PRIMARY KEY,
                     slug TEXT UNIQUE NOT NULL,
@@ -217,6 +227,21 @@ def set_user_trial_usage(user_id, count):
         with conn.cursor() as cur:
             cur.execute("UPDATE users SET trial_images_used = %s WHERE id = %s", (count, user_id))
         conn.commit()
+
+def log_usage_event(user_id, image_count, bg_model, canvas_w, canvas_h):
+    """Append one row per /process call for a logged-in user. Never raise —
+    a broken log must not fail the actual image download."""
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO usage_events (user_id, image_count, bg_model, canvas_w, canvas_h) "
+                    "VALUES (%s, %s, %s, %s, %s)",
+                    (user_id, image_count, bg_model, canvas_w, canvas_h)
+                )
+            conn.commit()
+    except Exception as e:
+        print(f"usage_events log failed for user {user_id}: {e}")
 
 def increment_paid_usage(user_id, count=1):
     """Bump paid_images_used with monthly rollover — if the last reset was
@@ -1109,6 +1134,22 @@ def admin_page():
                 "FROM users ORDER BY created_at DESC"
             )
             users = cur.fetchall()
+            # Per-user 30-day breakdown of resize vs bg removal
+            cur.execute("""
+                SELECT user_id,
+                       SUM(CASE WHEN bg_model='none' THEN image_count ELSE 0 END) AS resize_count,
+                       SUM(CASE WHEN bg_model!='none' THEN image_count ELSE 0 END) AS bg_removal_count,
+                       MAX(ts) AS last_used
+                FROM usage_events
+                WHERE ts > NOW() - INTERVAL '30 days'
+                GROUP BY user_id
+            """)
+            usage_by_user = {r['user_id']: r for r in cur.fetchall()}
+            for u in users:
+                stats = usage_by_user.get(u['id'])
+                u['resize_count_30d'] = int(stats['resize_count']) if stats and stats['resize_count'] else 0
+                u['bg_removal_count_30d'] = int(stats['bg_removal_count']) if stats and stats['bg_removal_count'] else 0
+                u['last_used'] = stats['last_used'] if stats else None
             cur.execute("SELECT COUNT(*) as c FROM users")
             total = cur.fetchone()['c']
             cur.execute("SELECT COUNT(*) as c FROM users WHERE subscription_status = 'active'")
@@ -1228,6 +1269,10 @@ def process():
                 increment_paid_usage(_u['id'], image_count)
             except Exception as e:
                 print(f"paid usage tracking failed for user {_u['id']}: {e}")
+        # Log every event regardless of tier (trial, active, cancelled, even admin)
+        # so we can see per-day activity and the resize-vs-bg-removal split.
+        if _u and not _u.get('is_admin'):
+            log_usage_event(_u['id'], image_count, bg_model, target_w, target_h)
 
     # Read all file data upfront (can't read Flask file objects in threads)
     file_data = [(f.read(), os.path.splitext(f.filename)[0] + ".jpg") for f in files]
