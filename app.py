@@ -904,6 +904,31 @@ def billing_portal():
     )
     return jsonify({"url": portal.url})
 
+@app.route("/subscribe/cancel", methods=["POST"])
+@login_required
+def cancel_subscription():
+    user = get_user_by_id(session['user_id'])
+    if not user['stripe_customer_id']:
+        return jsonify({"error": "No active subscription"}), 400
+    subs = stripe.Subscription.list(customer=user['stripe_customer_id'], status='active', limit=5)
+    if not subs.data:
+        return jsonify({"error": "No active subscription to cancel"}), 400
+    ends_at = None
+    for sub in subs.data:
+        updated = stripe.Subscription.modify(sub.id, cancel_at_period_end=True)
+        try:
+            ts = updated['items']['data'][0].get('current_period_end') or updated.get('current_period_end')
+            if ts:
+                ends_at = datetime.fromtimestamp(ts, tz=timezone.utc)
+        except (KeyError, IndexError):
+            pass
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE users SET subscription_status='cancelled', subscription_ends_at=%s WHERE id=%s",
+                        (ends_at, user['id']))
+        conn.commit()
+    return jsonify({"ok": True, "ends_at": ends_at.isoformat() if ends_at else None})
+
 # ── Email ────────────────────────────────────────────────────────────────────
 
 def send_email(to, subject, html):

@@ -682,8 +682,10 @@
           {% if is_admin %}
           <a href="/admin" style="display:block;padding:8px 12px;font-size:12px;color:#e8a030;text-decoration:none;border-radius:4px;font-weight:500;" onmouseover="this.style.background='#f0ece6'" onmouseout="this.style.background=''">Admin dashboard</a>
           {% endif %}
-          <a href="#" onclick="openPortal()" style="display:block;padding:8px 12px;font-size:12px;color:#1a1714;text-decoration:none;border-radius:4px;" onmouseover="this.style.background='#f0ece6'" onmouseout="this.style.background=''">Manage billing</a>
-          <a href="#" onclick="openPortal()" style="display:block;padding:8px 12px;font-size:12px;color:#8c8278;text-decoration:none;border-radius:4px;" onmouseover="this.style.background='#f0ece6'" onmouseout="this.style.background=''">Cancel subscription</a>
+          <a href="#" onclick="openPortal();return false;" style="display:block;padding:8px 12px;font-size:12px;color:#1a1714;text-decoration:none;border-radius:4px;" onmouseover="this.style.background='#f0ece6'" onmouseout="this.style.background=''">Manage billing</a>
+          {% if user and user.subscription_status == 'active' %}
+          <a href="#" onclick="cancelSubscription();return false;" style="display:block;padding:8px 12px;font-size:12px;color:#8c8278;text-decoration:none;border-radius:4px;" onmouseover="this.style.background='#f0ece6'" onmouseout="this.style.background=''">Cancel subscription</a>
+          {% endif %}
           <div style="border-top:1px solid #e0d9cf;margin:4px 0;"></div>
           <a href="/logout" style="display:block;padding:8px 12px;font-size:12px;color:#c84b2f;text-decoration:none;border-radius:4px;" onmouseover="this.style.background='#f0ece6'" onmouseout="this.style.background=''">Sign out</a>
         </div>
@@ -1292,6 +1294,18 @@
     const res = await fetch('/subscribe/portal', { method: 'POST' });
     const data = await res.json();
     if (data.url) window.location.href = data.url;
+  }
+  async function cancelSubscription() {
+    if (!confirm('Cancel your PixelPrep subscription? You will keep access until the end of your current billing period, then won\'t be charged again.')) return;
+    const res = await fetch('/subscribe/cancel', { method: 'POST' });
+    const data = await res.json();
+    if (data.ok) {
+      const endsAt = data.ends_at ? new Date(data.ends_at).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) : 'the end of your billing period';
+      alert('Subscription cancelled. You still have access until ' + endsAt + '. You can resubscribe anytime.');
+      window.location.reload();
+    } else {
+      alert(data.error || 'Could not cancel subscription. Please try again or contact support.');
+    }
   }
   const _fetch = window.fetch;
   window.fetch = async (...args) => {
