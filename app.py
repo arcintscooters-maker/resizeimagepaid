@@ -1077,14 +1077,28 @@ def stripe_webhook():
         return str(e), 400
     if event['type'] in ('customer.subscription.created', 'customer.subscription.updated'):
         sub = event['data']['object']
-        ends_at = datetime.fromtimestamp(sub['current_period_end'], tz=timezone.utc)
+        ends_at = _sub_period_end(sub)
         status = 'active' if sub['status'] == 'active' else sub['status']
         update_user_subscription(sub['customer'], status, ends_at)
     elif event['type'] == 'customer.subscription.deleted':
         sub = event['data']['object']
-        ends_at = datetime.fromtimestamp(sub['current_period_end'], tz=timezone.utc)
+        ends_at = _sub_period_end(sub)
         update_user_subscription(sub['customer'], 'cancelled', ends_at)
     return jsonify({"ok": True})
+
+def _sub_period_end(sub):
+    """Stripe moved current_period_end from the subscription object to
+    subscription items in 2025. Check the new location first, fall back
+    to the old one."""
+    ts = sub.get('current_period_end')
+    if ts is None:
+        try:
+            ts = sub['items']['data'][0].get('current_period_end')
+        except (KeyError, IndexError):
+            ts = None
+    if ts is None:
+        return None
+    return datetime.fromtimestamp(ts, tz=timezone.utc)
 
 @app.route("/logout")
 def logout():
