@@ -99,6 +99,7 @@
             <th>Email</th>
             <th>Status</th>
             <th>Trial Images</th>
+            <th>Paid (this cycle)</th>
             <th>Trial Ends</th>
             <th>Sub Ends</th>
             <th>Joined</th>
@@ -123,6 +124,16 @@
               <span class="bar-wrap">
                 <span class="bar-fill {% if pct >= 100 %}full{% elif pct >= 70 %}used{% endif %}" style="width:{{ [pct,100]|min }}%"></span>
               </span>
+            </td>
+            <td>
+              {% if u.subscription_status in ('active', 'cancelled') %}
+                <strong>{{ u.paid_images_used or 0 }}</strong>
+                {% if u.paid_period_reset_at %}
+                  <div class="muted" style="font-size:11px;">since {{ u.paid_period_reset_at.strftime('%d %b') }}</div>
+                {% endif %}
+              {% else %}
+                <span class="muted">—</span>
+              {% endif %}
             </td>
             <td class="muted">
               {% if u.trial_ends_at %}{{ u.trial_ends_at.strftime('%d %b %Y') }}{% else %}—{% endif %}

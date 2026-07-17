@@ -156,6 +156,8 @@ def init_db():
                 ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS trial_images_used INTEGER DEFAULT 0;
                 ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE;
                 ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT FALSE;
+                ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS paid_images_used INTEGER DEFAULT 0;
+                ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS paid_period_reset_at TIMESTAMPTZ;
                 CREATE TABLE IF NOT EXISTS email_tokens (
                     id SERIAL PRIMARY KEY,
                     user_id INTEGER NOT NULL,
@@ -215,6 +217,31 @@ def set_user_trial_usage(user_id, count):
         with conn.cursor() as cur:
             cur.execute("UPDATE users SET trial_images_used = %s WHERE id = %s", (count, user_id))
         conn.commit()
+
+def increment_paid_usage(user_id, count=1):
+    """Bump paid_images_used with monthly rollover — if the last reset was
+    more than 30 days ago (or never set), the counter starts fresh at `count`
+    and paid_period_reset_at is refreshed to now."""
+    now = datetime.now(timezone.utc)
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT paid_period_reset_at FROM users WHERE id = %s", (user_id,))
+            row = cur.fetchone()
+            reset_at = row.get('paid_period_reset_at') if row else None
+            needs_reset = reset_at is None or (now - reset_at) > timedelta(days=30)
+            if needs_reset:
+                cur.execute(
+                    "UPDATE users SET paid_images_used = %s, paid_period_reset_at = %s WHERE id = %s RETURNING paid_images_used",
+                    (count, now, user_id)
+                )
+            else:
+                cur.execute(
+                    "UPDATE users SET paid_images_used = paid_images_used + %s WHERE id = %s RETURNING paid_images_used",
+                    (count, user_id)
+                )
+            result = cur.fetchone()
+        conn.commit()
+    return result['paid_images_used'] if result else 0
 
 def get_user_by_id(user_id):
     with get_db() as conn:
@@ -1077,6 +1104,7 @@ def admin_page():
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT id, username, email, subscription_status, trial_images_used, "
+                "paid_images_used, paid_period_reset_at, "
                 "trial_ends_at, subscription_ends_at, is_admin, created_at "
                 "FROM users ORDER BY created_at DESC"
             )
@@ -1190,6 +1218,16 @@ def process():
             files = files[:upload_limit]
 
     image_count = len(files)
+
+    # Track paid usage — active/cancelled subscribers get counted here with
+    # a monthly rollover. Trial + anon are counted separately (see below).
+    if not is_anon and 'user_id' in session:
+        _u = get_user_by_id(session['user_id'])
+        if _u and _u.get('subscription_status') in ('active', 'cancelled') and not _u.get('is_admin'):
+            try:
+                increment_paid_usage(_u['id'], image_count)
+            except Exception as e:
+                print(f"paid usage tracking failed for user {_u['id']}: {e}")
 
     # Read all file data upfront (can't read Flask file objects in threads)
     file_data = [(f.read(), os.path.splitext(f.filename)[0] + ".jpg") for f in files]
