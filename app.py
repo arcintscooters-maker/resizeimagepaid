@@ -1169,30 +1169,66 @@ def stripe_webhook():
         event = stripe.Webhook.construct_event(payload, sig, STRIPE_WEBHOOK_SECRET)
     except Exception as e:
         return str(e), 400
-    if event['type'] in ('customer.subscription.created', 'customer.subscription.updated'):
-        sub = event['data']['object']
-        ends_at = _sub_period_end(sub)
-        status = 'active' if sub['status'] == 'active' else sub['status']
-        update_user_subscription(sub['customer'], status, ends_at)
-    elif event['type'] == 'customer.subscription.deleted':
-        sub = event['data']['object']
-        ends_at = _sub_period_end(sub)
-        update_user_subscription(sub['customer'], 'cancelled', ends_at)
+    try:
+        if event['type'] in ('customer.subscription.created', 'customer.subscription.updated'):
+            sub = event['data']['object']
+            ends_at = _sub_period_end(sub)
+            status = 'active' if sub['status'] == 'active' else sub['status']
+            update_user_subscription(sub['customer'], status, ends_at)
+        elif event['type'] == 'customer.subscription.deleted':
+            sub = event['data']['object']
+            customer_id = sub['customer']
+            # A customer can hold more than one subscription (e.g. a duplicate
+            # signup). Only mark the account cancelled if no *other* live
+            # subscription remains, otherwise we'd revoke a paying customer.
+            still_live = _has_other_live_subscription(customer_id, sub['id'])
+            if still_live:
+                print(f"webhook: {customer_id} still has a live subscription, not cancelling")
+            else:
+                update_user_subscription(customer_id, 'cancelled', _sub_period_end(sub))
+    except Exception as e:
+        # Never 500 — Stripe retries for days and then disables the endpoint.
+        # Log loudly and acknowledge so we can replay from the dashboard.
+        import traceback
+        print(f"webhook: FAILED to process {event.get('type')} {event.get('id')}: {e}")
+        traceback.print_exc()
     return jsonify({"ok": True})
 
 def _sub_period_end(sub):
-    """Stripe moved current_period_end from the subscription object to
-    subscription items in 2025. Check the new location first, fall back
-    to the old one."""
-    ts = sub.get('current_period_end')
+    """Stripe moved current_period_end from the subscription object onto the
+    subscription items in 2025. Check the new location first, fall back to the
+    old top-level field.
+
+    `sub` is a StripeObject whose __getattr__ raises AttributeError for dict
+    methods, so `.get()` is NOT safe here — use bracket access guarded by
+    try/except."""
+    ts = None
+    try:
+        ts = sub['items']['data'][0]['current_period_end']
+    except Exception:
+        pass
     if ts is None:
         try:
-            ts = sub['items']['data'][0].get('current_period_end')
-        except (KeyError, IndexError):
-            ts = None
+            ts = sub['current_period_end']
+        except Exception:
+            pass
     if ts is None:
         return None
     return datetime.fromtimestamp(ts, tz=timezone.utc)
+
+def _has_other_live_subscription(customer_id, excluding_sub_id):
+    """True if the customer has a subscription other than `excluding_sub_id`
+    that still entitles them to access."""
+    try:
+        subs = stripe.Subscription.list(customer=customer_id, status='all', limit=20)
+        for s in subs.data:
+            if s['id'] == excluding_sub_id:
+                continue
+            if s['status'] in ('active', 'trialing', 'past_due'):
+                return True
+    except Exception as e:
+        print(f"webhook: could not list subscriptions for {customer_id}: {e}")
+    return False
 
 @app.route("/logout")
 def logout():
