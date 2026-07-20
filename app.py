@@ -1169,6 +1169,13 @@ def stripe_webhook():
         event = stripe.Webhook.construct_event(payload, sig, STRIPE_WEBHOOK_SECRET)
     except Exception as e:
         return str(e), 400
+    # Pull these out up front: `event` is a StripeObject, so even reading a
+    # missing key can raise — and doing that inside the except block below
+    # would escape the handler and 500.
+    try:
+        event_type, event_id = event['type'], event['id']
+    except Exception:
+        event_type, event_id = '?', '?'
     try:
         if event['type'] in ('customer.subscription.created', 'customer.subscription.updated'):
             sub = event['data']['object']
@@ -1190,7 +1197,7 @@ def stripe_webhook():
         # Never 500 — Stripe retries for days and then disables the endpoint.
         # Log loudly and acknowledge so we can replay from the dashboard.
         import traceback
-        print(f"webhook: FAILED to process {event.get('type')} {event.get('id')}: {e}")
+        print(f"webhook: FAILED to process {event_type} {event_id}: {e}")
         traceback.print_exc()
     return jsonify({"ok": True})
 
