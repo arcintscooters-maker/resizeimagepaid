@@ -20,7 +20,17 @@ from email import encoders
 from flask import (Flask, request, send_file, render_template,
                    jsonify, session, redirect, url_for, make_response,
                    send_from_directory)
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
+# iPhones export photos as HEIC/HEIF by default, which Pillow can't decode on
+# its own. Registering pillow-heif teaches Image.open to handle them. Optional
+# so the app still boots if the wheel is unavailable.
+try:
+    from pillow_heif import register_heif_opener
+    register_heif_opener()
+    HEIF_SUPPORTED = True
+except Exception as _heif_err:
+    HEIF_SUPPORTED = False
+    print(f"pillow-heif not available, HEIC uploads will be rejected: {_heif_err}")
 import io
 import zipfile
 import numpy as np
@@ -546,7 +556,11 @@ def process_image(img_bytes, target_w, target_h, bg_color_hex, remove_bg, fill_p
         _LAST_REMBG_USE[0] = time.time()  # keep the idle reaper from dropping mid-use
     try:
         bg_rgb = hex_to_rgb(bg_color_hex)
-        img = Image.open(io.BytesIO(img_bytes)).convert("RGBA")
+        try:
+            img = Image.open(io.BytesIO(img_bytes)).convert("RGBA")
+        except UnidentifiedImageError:
+            hint = "" if HEIF_SUPPORTED else " (HEIC/HEIF images from iPhones aren't supported yet)"
+            raise ValueError(f"unsupported or corrupted image format{hint}")
         if remove_bg:
             try:
                 from rembg import remove
@@ -1026,30 +1040,60 @@ def send_email_with_attachment(to, subject, html, attachment_bytes, attachment_n
         return False
 
 def process_and_email(file_data, target_w, target_h, bg_color, fill_pct, bg_model, user_email):
-    """Process images in background thread and email results as zip."""
+    """Process images in background thread and email results as zip.
+
+    One bad image (e.g. an unsupported format) no longer fails the whole
+    batch — good images are still delivered and the failures are named."""
     try:
         def _process(args):
             data, name = args
-            return name, process_image(data, target_w, target_h, bg_color, True, fill_pct, bg_model)
+            try:
+                return name, process_image(data, target_w, target_h, bg_color, True, fill_pct, bg_model), None
+            except Exception as e:
+                print(f"Image '{name}' failed: {e}")
+                return name, None, str(e)
 
         with ThreadPoolExecutor(max_workers=2) as pool:
             results = list(pool.map(_process, file_data))
 
+        ok = [(name, buf) for name, buf, err in results if buf is not None]
+        failed = [(name, err) for name, buf, err in results if buf is None]
+
+        if not ok:
+            # Nothing came through — tell them why, with the specific reason.
+            reasons = "".join(f"<li><strong>{name}</strong> — {err}</li>" for name, err in failed)
+            send_email(user_email, "PixelPrep couldn't process your images",
+                f'<p>Sorry, we couldn\'t process the image{"s" if len(failed) != 1 else ""} you uploaded:</p>'
+                f'<ul>{reasons}</ul>'
+                f'<p>Please try again at <a href="{APP_URL}">{APP_URL}</a>.</p>')
+            print(f"Background processing failed for all {len(failed)} images for {user_email}")
+            return
+
         zip_buf = io.BytesIO()
         with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
-            for name, result in results:
+            for name, result in ok:
                 zf.writestr(name, result.read())
         zip_buf.seek(0)
+
+        failed_note = ""
+        if failed:
+            items = "".join(f"<li><strong>{name}</strong> — {err}</li>" for name, err in failed)
+            failed_note = (
+                f'<p style="color:#b4531f;">We couldn\'t process {len(failed)} '
+                f'image{"s" if len(failed) != 1 else ""}:</p><ul>{items}</ul>'
+            )
 
         html = f"""
         <div style="font-family:sans-serif;max-width:500px;margin:0 auto;padding:20px;">
             <h2 style="color:#111;">Your images are ready! 📦</h2>
-            <p>Your <strong>{len(results)} image{'s' if len(results) > 1 else ''}</strong> processed with Quality AI mode {'are' if len(results) > 1 else 'is'} attached as a zip file.</p>
+            <p>Your <strong>{len(ok)} image{'s' if len(ok) > 1 else ''}</strong> processed with Quality AI mode {'are' if len(ok) > 1 else 'is'} attached as a zip file.</p>
+            {failed_note}
             <p style="color:#666;font-size:13px;">Processed by <a href="{APP_URL}" style="color:#6C5CE7;">PixelPrep</a></p>
         </div>
         """
         send_email_with_attachment(user_email, "Your PixelPrep images are ready!", html, zip_buf.read(), "pixelprep_images.zip")
-        print(f"Background processing complete — emailed {len(results)} images to {user_email}")
+        print(f"Background processing complete — emailed {len(ok)} images to {user_email}"
+              + (f" ({len(failed)} failed)" if failed else ""))
     except Exception as e:
         print(f"Background processing failed: {e}")
         try:
@@ -1343,18 +1387,28 @@ def process():
 
     def _process(args):
         data, name = args
-        return name, process_image(data, target_w, target_h, bg_color, remove_bg, fill_pct, bg_model, clean_bg)
+        try:
+            return name, process_image(data, target_w, target_h, bg_color, remove_bg, fill_pct, bg_model, clean_bg), None
+        except Exception as e:
+            print(f"Image '{name}' failed: {e}")
+            return name, None, str(e)
 
     if image_count == 1:
-        name, result = _process(file_data[0])
+        name, result, err = _process(file_data[0])
+        if result is None:
+            return jsonify({"error": f"Couldn't process {name}: {err}"}), 400
         response = send_file(result, mimetype="image/jpeg", as_attachment=True, download_name=name)
     else:
         # Process images in parallel (2 workers to avoid OOM on Railway)
         with ThreadPoolExecutor(max_workers=2) as pool:
             results = list(pool.map(_process, file_data))
+        ok = [(name, buf) for name, buf, err in results if buf is not None]
+        if not ok:
+            reasons = "; ".join(f"{name}: {err}" for name, buf, err in results)
+            return jsonify({"error": f"Couldn't process your images — {reasons}"}), 400
         zip_buf = io.BytesIO()
         with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
-            for name, result in results:
+            for name, result in ok:
                 zf.writestr(name, result.read())
         zip_buf.seek(0)
         response = send_file(zip_buf, mimetype="application/zip", as_attachment=True, download_name="resized_images.zip")
