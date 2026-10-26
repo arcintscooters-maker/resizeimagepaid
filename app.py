@@ -164,11 +164,6 @@ def init_db():
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-                ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS trial_images_used INTEGER DEFAULT 0;
-                ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE;
-                ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT FALSE;
-                ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS paid_images_used INTEGER DEFAULT 0;
-                ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS paid_period_reset_at TIMESTAMPTZ;
                 CREATE TABLE IF NOT EXISTS email_tokens (
                     id SERIAL PRIMARY KEY,
                     user_id INTEGER NOT NULL,
@@ -219,6 +214,13 @@ def init_db():
                     is_admin BOOLEAN DEFAULT FALSE,
                     created_at TIMESTAMPTZ DEFAULT NOW()
                 );
+                -- Column additions run AFTER the CREATEs so a freshly created
+                -- users table also gets them (they were skipped on 26 Oct).
+                ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS trial_images_used INTEGER DEFAULT 0;
+                ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE;
+                ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT FALSE;
+                ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS paid_images_used INTEGER DEFAULT 0;
+                ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS paid_period_reset_at TIMESTAMPTZ;
             """)
         conn.commit()
 
