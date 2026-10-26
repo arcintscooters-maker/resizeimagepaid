@@ -4,6 +4,7 @@ import time
 import ctypes
 import ctypes.util
 import secrets
+import hmac
 import json
 from datetime import datetime, timedelta, timezone
 from functools import wraps
@@ -321,10 +322,21 @@ def update_user_subscription(stripe_customer_id, status, ends_at=None):
             """, (status, ends_at, stripe_customer_id))
         conn.commit()
 
+ADMIN_EMAILS = {e.strip().lower() for e in os.environ.get("ADMIN_EMAILS", "").split(",") if e.strip()}
+
+def user_is_admin(user):
+    """Admin if the DB flag is set OR the email is listed in env ADMIN_EMAILS
+    (lets admins survive a lost users table without a DB write)."""
+    if not user:
+        return False
+    if user.get('is_admin'):
+        return True
+    return (user.get('email') or '').strip().lower() in ADMIN_EMAILS
+
 def is_active(user):
     if not user:
         return False
-    if user.get('is_admin', False):
+    if user_is_admin(user):
         return True
     now = datetime.now(timezone.utc)
     if user['subscription_status'] in ('active', 'cancelled'):
@@ -625,7 +637,7 @@ def index():
             return redirect(url_for('login_page'))
         if not is_active(user):
             return redirect(url_for('subscribe_page'))
-        is_admin = user.get('is_admin', False)
+        is_admin = user_is_admin(user)
         is_trial = user['subscription_status'] == 'trial' and not is_admin
         is_paid = user['subscription_status'] in ('active', 'cancelled') and not is_admin
         images_remaining = user_trial_images_left(user) if is_trial else None
@@ -919,6 +931,61 @@ def blog_post(slug):
         return "Post not found", 404
     return render_template("blog_post.html", post=post)
 
+# ── Blog publish API (key-protected; replaces the old direct-DB publish) ─────
+
+def _blog_key_ok():
+    expected = os.environ.get("BLOG_PUBLISH_KEY", "")
+    if not expected:
+        return False
+    given = request.headers.get("X-Blog-Key", "")
+    return hmac.compare_digest(given.encode(), expected.encode())
+
+@app.route("/admin/api/blog-publish", methods=["POST"])
+def api_blog_publish():
+    if not _blog_key_ok():
+        return jsonify({"error": "forbidden"}), 403
+    data = request.get_json(silent=True) or {}
+    slug = (data.get("slug") or "").strip()
+    title = (data.get("title") or "").strip()
+    content = data.get("content") or ""
+    if not slug or not title or not content.strip():
+        return jsonify({"error": "slug, title and content are required"}), 400
+    meta = data.get("meta_description")
+    published = data.get("published", True)
+    published = published if isinstance(published, bool) else str(published).lower() in ("1", "true", "yes")
+    created_at = None
+    if data.get("created_at"):
+        try:
+            created_at = datetime.fromisoformat(str(data["created_at"]).replace("Z", "+00:00"))
+            if created_at.tzinfo is None:
+                created_at = created_at.replace(tzinfo=timezone.utc)
+        except ValueError:
+            return jsonify({"error": "created_at must be an ISO timestamp"}), 400
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO blog_posts (slug, title, meta_description, content, published, created_at)
+                   VALUES (%s, %s, %s, %s, %s, COALESCE(%s, NOW()))
+                   ON CONFLICT (slug) DO UPDATE SET title=EXCLUDED.title, meta_description=EXCLUDED.meta_description,
+                   content=EXCLUDED.content, published=EXCLUDED.published,
+                   created_at=COALESCE(%s, blog_posts.created_at), updated_at=NOW()
+                   RETURNING id""",
+                (slug, title, meta, content, published, created_at, created_at)
+            )
+            row = cur.fetchone()
+        conn.commit()
+    return jsonify({"ok": True, "slug": slug, "id": row["id"]})
+
+@app.route("/admin/api/blog-count")
+def api_blog_count():
+    if not _blog_key_ok():
+        return jsonify({"error": "forbidden"}), 403
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) AS total, COUNT(*) FILTER (WHERE published) AS published FROM blog_posts")
+            row = cur.fetchone()
+    return jsonify({"total": int(row["total"]), "published": int(row["published"])})
+
 @app.route("/subscribe")
 @login_required
 def subscribe_page():
@@ -1161,7 +1228,7 @@ def admin_required(f):
         if 'user_id' not in session:
             return redirect(url_for('login_page'))
         user = get_user_by_id(session['user_id'])
-        if not user or not user.get('is_admin'):
+        if not user or not user_is_admin(user):
             return redirect(url_for('index'))
         return f(*args, **kwargs)
     return decorated
@@ -1339,7 +1406,7 @@ def process():
 
     # Enforce per-upload image limits based on AI mode (admins are unlimited)
     _user_for_limit = get_user_by_id(session['user_id']) if 'user_id' in session else None
-    _is_admin = _user_for_limit.get('is_admin', False) if _user_for_limit else False
+    _is_admin = user_is_admin(_user_for_limit)
     if not _is_admin:
         upload_limit = BG_LIMITS[bg_model]
         if len(files) > upload_limit:
@@ -1351,14 +1418,14 @@ def process():
     # a monthly rollover. Trial + anon are counted separately (see below).
     if not is_anon and 'user_id' in session:
         _u = get_user_by_id(session['user_id'])
-        if _u and _u.get('subscription_status') in ('active', 'cancelled') and not _u.get('is_admin'):
+        if _u and _u.get('subscription_status') in ('active', 'cancelled') and not user_is_admin(_u):
             try:
                 increment_paid_usage(_u['id'], image_count)
             except Exception as e:
                 print(f"paid usage tracking failed for user {_u['id']}: {e}")
         # Log every event regardless of tier (trial, active, cancelled, even admin)
         # so we can see per-day activity and the resize-vs-bg-removal split.
-        if _u and not _u.get('is_admin'):
+        if _u and not user_is_admin(_u):
             log_usage_event(_u['id'], image_count, bg_model, target_w, target_h)
 
     # Read all file data upfront (can't read Flask file objects in threads)
